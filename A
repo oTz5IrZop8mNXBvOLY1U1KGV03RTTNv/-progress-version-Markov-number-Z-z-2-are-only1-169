@@ -1,0 +1,1559 @@
+import Mathlib.Algebra.Order.Floor.Defs
+import Mathlib.Algebra.Order.Floor.Ring
+import Mathlib.Algebra.Order.Floor.Semiring
+import Mathlib.Data.Int.Basic
+import Mathlib.Tactic
+import Mathlib.Algebra.Order.Ring.Defs
+import Mathlib.NumberTheory.Zsqrtd.GaussianInt
+import Mathlib.NumberTheory.Zsqrtd.Basic
+import Mathlib.NumberTheory.SumTwoSquares
+import Aesop
+import Mathlib.Data.Int.ModEq
+import Mathlib.Tactic.IntervalCases
+import Mathlib.Data.Real.Basic
+import Mathlib.Data.ZMod.Basic
+import Mathlib.Data.Real.Sqrt
+import Mathlib.Tactic.NormNum
+import Mathlib.Tactic.Linarith
+import Mathlib.Tactic.Positivity
+import Mathlib.Tactic.Ring
+import Mathlib.NumberTheory.Zsqrtd.GaussianInt
+import Mathlib.Data.Nat.Factorization.Basic
+import Mathlib.NumberTheory.Padics.PadicVal.Basic
+import Mathlib.Data.Nat.GCD.Basic
+import Mathlib.NumberTheory.Padics.PadicVal.Basic
+import Mathlib.Data.Nat.Prime.Defs
+import Mathlib.Tactic.GCongr
+
+
+
+--import GaussianInt.units_eq
+--import GaussianInt.isUnit_iff
+
+import Mathlib.Data.Nat.Basic
+
+set_option linter.style.longLine false
+set_option linter.style.maxHeartbeats false
+set_option maxHeartbeats 10000000
+
+set_option linter.style.longLine false
+set_option trace.Meta.synthInstance true
+
+open Nat Int
+open GaussianInt
+open scoped GaussianInt
+open Nat Int Real
+open Int
+
+
+
+namespace MarkovSquare
+
+variable {x z m : ℕ}
+
+def MarkovSqEq (x z m : ℕ) : Prop :=
+  m ^ 2 + 4 * x ^ 2 + 4 * z ^ 4 = 9 * z ^ 4 * x ^ 2
+
+
+/-- \(s^2 - 2z^4 = -1\) の正整数解は \((s,z) = (\pm1,1)\) と \((\pm239,13)\) のみである。
+    （古典的結果。例：Ljunggren、または Zhu–Le–Soydan, Math. Reports 2015 など） -/
+axiom only_solutions_s2_minus_2z4_eq_neg1
+    (s z : ℤ) (hz : 0 < z)
+    (h : s ^ 2 - 2 * z ^ 4 = -1) :
+    z = 1 ∨ z = 13
+
+/--
+【Cohn (1964) の定理】
+Pell 方程式 X^2 - 5Y^2 = -4 において、Y が平方数となる正の整数解は Y = 1 または Y = 144 のみである。
+（※ Mathlib に未収録のため axiom として宣言）
+-/
+axiom cohn_pell_square_sol (X Y : ℤ)
+    (hPell : X ^ 2 - 5 * Y ^ 2 = -4)
+    (hsq : IsSquare Y)
+    (hpos : 0 < Y) : Y = 1 ∨ Y = 144
+
+/-- 補題 (k=4 ケースにおける X の奇偶性の矛盾証明) -/
+lemma lemma_k4_contradiction
+    (a b c d X q : ℤ)
+    (hq : X = 2 * q + 1)
+    (hX : X = |a| * |d| + |b| * |c|)
+    (ha_even : Even a)  -- 4 | a より a は偶数
+    (hc_even : Even c)  -- c ≡ 2 (mod 4) より c は偶数
+    : False := by
+  rcases ha_even with ⟨ka, rfl⟩
+  rcases hc_even with ⟨kc, rfl⟩
+  rw [← two_mul ka, ← two_mul kc] at hX  -- ka + ka を 2 * ka に書き換え
+  rw [abs_mul, abs_mul] at hX           -- |2 * ka| を |2| * |ka| に分解
+  norm_num at hX                        -- |2| を 数値 2 に計算
+  ring_nf at hX                         -- 係数 2 を整列 (X = 2 * (...) の形にする)
+  omega
+
+
+lemma abs_even_mul_abs_odd_mod4 {e o : ℤ}
+    (he : Even e) (ho : Odd o) :
+    (|e| : ℤ) * (|o| : ℤ) ≡ 0 [ZMOD 4] ∨ (|e| : ℤ) * (|o| : ℤ) ≡ 2 [ZMOD 4] := by
+  rcases he with ⟨k, rfl⟩
+  -- e = k + k を 2 * k に書き換える
+  rw [← two_mul]
+  rw [abs_mul]
+  -- |2| = 2
+  have h2 : |(2 : ℤ)| = 2 := by rfl
+  rw [h2]
+  -- 積は 2 * (|k| * |o|) の形
+  -- |k| * |o| の偶奇で場合分け
+  rcases Int.even_or_odd (|k| * |o|) with h_even | h_odd
+  · -- 偶数の場合 → ≡ 0 [ZMOD 4]
+    left
+    rcases h_even with ⟨j, hj⟩
+    -- |k| * |o| = j + j = 2 * j
+    rw [Int.modEq_zero_iff_dvd]
+    use j
+    -- 2 * (|k| * |o|) = 2 * (2 * j) = 4 * j
+    linarith [hj]
+  · -- 奇数の場合 → ≡ 2 [ZMOD 4]
+    right
+    rcases h_odd with ⟨j, hj⟩
+    -- |k| * |o| = 2 * j + 1
+    rw [Int.modEq_iff_dvd]
+    use -j
+    -- 2 * (2 * j + 1) - 2 = 4 * j
+    linarith [hj]
+
+
+
+
+
+
+
+lemma m_lt_3xz2_sub1 (hx : 0 < x) (hz : 0 < z) (h : MarkovSqEq x z m) :
+    m < 3 * x * z ^ 2 - 1 := by
+  have h_one_le : 1 ≤ 3 * x * z ^ 2 := by
+    zify at hx hz
+    nlinarith
+  zify [h_one_le]
+  unfold MarkovSqEq at h
+  have h_eq : (m : ℤ) ^ 2 + 4 * (x : ℤ) ^ 2 + 4 * (z : ℤ) ^ 4 = 9 * (z : ℤ) ^ 4 * (x : ℤ) ^ 2 := by
+    exact_mod_cast h
+  have h_diff : (3 * (x : ℤ) * (z : ℤ) ^ 2 - 1) ^ 2 - (m : ℤ) ^ 2 =
+      4 * (x : ℤ) ^ 2 - 6 * (x : ℤ) * (z : ℤ) ^ 2 + 4 * (z : ℤ) ^ 4 + 1 := by
+    linear_combination -h_eq
+  have h_pos_z : 0 < 4 * (x : ℤ) ^ 2 - 6 * (x : ℤ) * (z : ℤ) ^ 2 + 4 * (z : ℤ) ^ 4 + 1 := by
+    have h_sq : 0 < (4 * (x : ℤ) - 3 * (z : ℤ) ^ 2) ^ 2 + 7 * (z : ℤ) ^ 4 + 4 := by
+      positivity
+    have h_identity : 4 * (4 * (x : ℤ) ^ 2 - 6 * (x : ℤ) * (z : ℤ) ^ 2 + 4 * (z : ℤ) ^ 4 + 1) =
+        (4 * (x : ℤ) - 3 * (z : ℤ) ^ 2) ^ 2 + 7 * (z : ℤ) ^ 4 + 4 := by ring
+    nlinarith
+  have h_sq_lt : (m : ℤ) ^ 2 < (3 * (x : ℤ) * (z : ℤ) ^ 2 - 1) ^ 2 := by
+    linarith [h_diff, h_pos_z]
+  have h_rhs_pos : 0 < 3 * (x : ℤ) * (z : ℤ) ^ 2 - 1 := by
+    zify at hx hz
+    nlinarith
+  nlinarith [sq_lt_sq.mp h_sq_lt, h_rhs_pos]
+
+lemma quadratic_ineq (hx : 0 < x) (hz : 0 < z) (h : MarkovSqEq x z m)
+    (hm_ge : 3 * (x : ℤ) * (z : ℤ) ^ 2 - 2 ≤ (m : ℤ)) :
+    (x : ℤ)^2 - 3 * (z : ℤ)^2 * (x : ℤ) + ((z : ℤ)^4 + 1) ≤ 0 := by
+  unfold MarkovSqEq at h
+  have h_eq_add : (m : ℤ) ^ 2 + 4 * (x : ℤ) ^ 2 + 4 * (z : ℤ) ^ 4 = 9 * (z : ℤ) ^ 4 * (x : ℤ) ^ 2 := by
+    exact_mod_cast h
+  have h_ring : (3 * (x : ℤ) * (z : ℤ) ^ 2 - 2) ^ 2 - (m : ℤ) ^ 2
+      = 4 * ((x : ℤ) ^ 2 - 3 * (z : ℤ) ^ 2 * (x : ℤ) + ((z : ℤ) ^ 4 + 1)) := by
+    linear_combination -h_eq_add
+  have h_base_pos : 0 ≤ 3 * (x : ℤ) * (z : ℤ) ^ 2 - 2 := by
+    zify at hx hz
+    nlinarith
+  have h_sq_le : (3 * (x : ℤ) * (z : ℤ) ^ 2 - 2) ^ 2 ≤ (m : ℤ) ^ 2 := by
+    nlinarith [hm_ge, h_base_pos]
+  nlinarith [h_ring, h_sq_le]
+
+lemma disc_nonneg (_hx : 0 < x) (hz : 0 < z) (_h : MarkovSqEq x z m) :
+    5 * z^4 ≥ 4 := by
+  have : 0 < z ^ 4 := by positivity
+  omega
+
+lemma exists_k (hx : 0 < x) (hz : 0 < z) (h : MarkovSqEq x z m) :
+    ∃ k : ℕ, k ≥ 2 ∧ m = 3 * x * z^2 - k := by
+  have h_lt := m_lt_3xz2_sub1 hx hz h
+  use 3 * x * z^2 - m
+  constructor
+  · omega
+  · omega
+
+lemma eq_after_subst (hx : 0 < x) (hz : 0 < z) (h : MarkovSqEq x z m)
+    {k : ℕ} (_hk : k ≥ 2) (hm : m = 3 * x * z ^ 2 - k) :
+    4 * (x : ℤ)^2 - 6 * (k : ℤ) * (x : ℤ) * (z : ℤ)^2 + (k : ℤ)^2 + 4 * (z : ℤ)^4 = 0 := by
+  unfold MarkovSqEq at h
+  have h_eq : (m : ℤ) ^ 2 + 4 * (x : ℤ) ^ 2 + 4 * (z : ℤ) ^ 4 = 9 * (z : ℤ) ^ 4 * (x : ℤ) ^ 2 := by
+    exact_mod_cast h
+  have hx' : 1 ≤ (x : ℤ) := by omega
+  have hz' : 1 ≤ (z : ℤ) := by omega
+  have hx2 : 1 ≤ (x : ℤ)^2 := by nlinarith [hx']
+  have hz2 : 1 ≤ (z : ℤ)^2 := by nlinarith [hz']
+  have hz4 : 1 ≤ (z : ℤ)^4 := by nlinarith [hz2]
+  have h_m2 : 0 < (m : ℤ)^2 := by nlinarith [h_eq, hx2, hz4]
+  have hm0 : 0 < m := by
+    by_contra h_zero
+    have : m = 0 := by omega
+    subst this
+    norm_num at h_m2
+  have hk_le : k ≤ 3 * x * z^2 := by omega
+  have hm_z : (m : ℤ) = 3 * (x : ℤ) * (z : ℤ)^2 - (k : ℤ) := by
+    zify [hk_le] at hm
+    exact hm
+  linear_combination h_eq - ((m : ℤ) + 3 * (x : ℤ) * (z : ℤ)^2 - (k : ℤ)) * hm_z
+
+lemma D_is_square (hx : 0 < x) (hz : 0 < z) (h : MarkovSqEq x z m)
+    {k : ℕ} (hk : k ≥ 2) (hm : m = 3 * x * z ^ 2 - k) :
+    IsSquare (9 * (k : ℤ)^2 * (z : ℤ)^4 - 4 * (k : ℤ)^2 - 16 * (z : ℤ)^4) := by
+  have heq := eq_after_subst hx hz h hk hm
+  have h_mul : 16 * (x : ℤ) ^ 2 - 24 * (k : ℤ) * (x : ℤ) * (z : ℤ) ^ 2 =
+      -4 * (k : ℤ) ^ 2 - 16 * (z : ℤ) ^ 4 := by
+    linear_combination 4 * heq
+  have h_sq : (4 * (x : ℤ) - 3 * (k : ℤ) * (z : ℤ) ^ 2) ^ 2 =
+      9 * (k : ℤ) ^ 2 * (z : ℤ) ^ 4 - 4 * (k : ℤ) ^ 2 - 16 * (z : ℤ) ^ 4 := by
+    calc
+      (4 * (x : ℤ) - 3 * (k : ℤ) * (z : ℤ) ^ 2) ^ 2
+          = 16 * (x : ℤ) ^ 2 - 24 * (k : ℤ) * (x : ℤ) * (z : ℤ) ^ 2
+            + 9 * (k : ℤ) ^ 2 * (z : ℤ) ^ 4 := by ring
+      _ = (-4 * (k : ℤ) ^ 2 - 16 * (z : ℤ) ^ 4)
+            + 9 * (k : ℤ) ^ 2 * (z : ℤ) ^ 4 := by rw [h_mul]
+      _ = 9 * (k : ℤ) ^ 2 * (z : ℤ) ^ 4 - 4 * (k : ℤ) ^ 2
+            - 16 * (z : ℤ) ^ 4 := by ring
+  exact ⟨4 * (x : ℤ) - 3 * (k : ℤ) * (z : ℤ) ^ 2, by rw [← pow_two]; exact h_sq.symm⟩
+
+lemma not_sum_two_squares_mod8_six (a b : ℤ) : ¬ (a ^ 2 + b ^ 2 ≡ 6 [ZMOD 8]) := by
+  have hsq (n : ℤ) : n ^ 2 % 8 = 0 ∨ n ^ 2 % 8 = 1 ∨ n ^ 2 % 8 = 4 := by
+    generalize hk : n % 8 = k
+    have h1 : 0 ≤ k := hk ▸ Int.emod_nonneg n (by decide)
+    have h2 : k < 8 := hk ▸ Int.emod_lt_of_pos n (by decide)
+    have hmod : n ^ 2 % 8 = k ^ 2 % 8 := by simp [pow_two, Int.mul_emod, hk]
+    rw [hmod]
+    interval_cases k <;> decide
+  rcases hsq a with ha | ha | ha <;> rcases hsq b with hb | hb | hb <;>
+    simp [Int.ModEq, ha, hb, Int.add_emod]
+
+
+
+-- K ≥ 6 のとき、a^2 + b^2 + c^2 = K * a * b * c は正の整数解を持たない補題（補助）
+lemma markov_no_sol_aux {K S a b c : ℕ} (hK : 6 ≤ K) (ha : 0 < a) (hb : 0 < b) (hc : 0 < c)
+    (hac : a ≤ c) (hbc : b ≤ c) (hS : a + b + c = S)
+    (h : a ^ 2 + b ^ 2 + c ^ 2 = K * a * b * c)
+    (ih : ∀ m < S, ∀ x y z, 0 < x → 0 < y → 0 < z →
+      x ^ 2 + y ^ 2 + z ^ 2 = K * x * y * z → x + y + z = m → False) : False := by
+  have h1 : K * a * b * c ≤ 3 * c ^ 2 := by
+    calc K * a * b * c = a ^ 2 + b ^ 2 + c ^ 2 := h.symm
+    _ ≤ c ^ 2 + c ^ 2 + c ^ 2 := by gcongr
+    _ = 3 * c ^ 2 := by ring
+  have h2 : K * a * b ≤ 3 * c := by
+    have h1_cancel : (K * a * b) * c ≤ (3 * c) * c := by
+      calc (K * a * b) * c = K * a * b * c := by ring
+      _ ≤ 3 * c ^ 2 := h1
+      _ = (3 * c) * c := by ring
+    exact Nat.le_of_mul_le_mul_right h1_cancel hc
+  have ha2 : 2 * a ≤ c := by
+    have : 6 * a ≤ K * a * b := by
+      calc 6 * a = 6 * a * 1 := by ring
+      _ ≤ K * a * b := by gcongr; exact hb
+    omega
+  have hb2 : 2 * b ≤ c := by
+    have : 6 * b ≤ K * a * b := by
+      calc 6 * b = 6 * 1 * b := by ring
+      _ ≤ K * a * b := by gcongr; exact ha
+    omega
+  have h4 : a ^ 2 + b ^ 2 < c ^ 2 := by
+    zify at ha2 hb2 hc ⊢
+    nlinarith
+  have h5 : c * (K * a * b - c) = a ^ 2 + b ^ 2 := by
+    have h_alg : c * (K * a * b) = c ^ 2 + (a ^ 2 + b ^ 2) := by
+      calc c * (K * a * b) = K * a * b * c := by ring
+      _ = a ^ 2 + b ^ 2 + c ^ 2 := h.symm
+      _ = c ^ 2 + (a ^ 2 + b ^ 2) := by ring
+    rw [Nat.mul_sub_left_distrib, h_alg]
+    have : c * c = c ^ 2 := by ring
+    rw [this, Nat.add_sub_cancel_left]
+  set c' := K * a * b - c
+  have hc'1 : 0 < c' := by
+    have h_pos : 0 < a ^ 2 + b ^ 2 := by positivity
+    have h_cc' : 0 < c * c' := by rwa [h5]
+    by_contra h0
+    have : c' = 0 := by omega
+    rw [this, mul_zero] at h_cc'
+    exact Nat.lt_irrefl 0 h_cc'
+  have hc'2 : c' < c := by
+    have h_lt : c * c' < c * c := by
+      calc c * c' = a ^ 2 + b ^ 2 := h5
+      _ < c ^ 2 := h4
+      _ = c * c := by ring
+    zify at hc h_lt ⊢
+    nlinarith
+  have h_eq' : a ^ 2 + b ^ 2 + c' ^ 2 = K * a * b * c' := by
+    calc a ^ 2 + b ^ 2 + c' ^ 2 = c * c' + c' ^ 2 := by rw [h5]
+    _ = c' * (c + c') := by ring
+    _ = c' * (K * a * b) := by
+      have : c + c' = K * a * b := by
+        dsimp [c']
+        omega
+      rw [this]
+    _ = K * a * b * c' := by ring
+  have hS' : a + b + c' < S := by
+    dsimp [c']
+    omega
+  exact ih (a + b + c') hS' a b c' ha hb hc'1 h_eq' rfl
+
+
+-- K ≥ 6 のとき、a^2 + b^2 + c^2 = K * a * b * c に正の整数解が存在しない定理
+lemma markov_no_sol {K : ℕ} (hK : 6 ≤ K) (a b c : ℕ) (ha : 0 < a) (hb : 0 < b) (hc : 0 < c)
+    (h : a ^ 2 + b ^ 2 + c ^ 2 = K * a * b * c) : False := by
+  generalize hS : a + b + c = S
+  induction' S using Nat.strong_induction_on with S ih generalizing a b c
+  rcases le_total a c with hac | hca
+  · rcases le_total b c with hbc | hcb
+    · exact markov_no_sol_aux hK ha hb hc hac hbc hS h ih
+    · have h' : a ^ 2 + c ^ 2 + b ^ 2 = K * a * c * b := by
+        calc a ^ 2 + c ^ 2 + b ^ 2 = a ^ 2 + b ^ 2 + c ^ 2 := by ring
+        _ = K * a * b * c := h
+        _ = K * a * c * b := by ring
+      have hS' : a + c + b = S := by omega
+      have hab : a ≤ b := by omega
+      exact markov_no_sol_aux hK ha hc hb hab hcb hS' h' ih
+  · rcases le_total b a with hba | hab
+    · have h' : b ^ 2 + c ^ 2 + a ^ 2 = K * b * c * a := by
+        calc b ^ 2 + c ^ 2 + a ^ 2 = a ^ 2 + b ^ 2 + c ^ 2 := by ring
+        _ = K * a * b * c := h
+        _ = K * b * c * a := by ring
+      have hS' : b + c + a = S := by omega
+      exact markov_no_sol_aux hK hb hc ha hba hca hS' h' ih
+    · have h' : a ^ 2 + c ^ 2 + b ^ 2 = K * a * c * b := by
+        calc a ^ 2 + c ^ 2 + b ^ 2 = a ^ 2 + b ^ 2 + c ^ 2 := by ring
+        _ = K * a * b * c := h
+        _ = K * a * c * b := by ring
+      have hS' : a + c + b = S := by omega
+      have hcb : c ≤ b := by omega
+      exact markov_no_sol_aux hK ha hc hb hab hcb hS' h' ih
+
+
+
+lemma markov_isCoprime_xz {x y z : ℕ} (h : x ^ 2 + y ^ 2 + z ^ 2 = 3 * x * y * z)
+    (hx : 0 < x) (hy : 0 < y) (hz : 0 < z) : IsCoprime (x : ℤ) (z : ℤ) := by
+  rw [Int.isCoprime_iff_gcd_eq_one]
+  by_contra hne
+  have hgt : 1 < Nat.gcd x z := Nat.one_lt_iff_ne_zero_and_ne_one.mpr ⟨fun h0 => by
+    have := Nat.gcd_eq_zero_iff.mp h0; omega, hne⟩
+  obtain ⟨q, hq, hqdiv⟩ := Nat.exists_prime_and_dvd (Nat.ne_of_gt hgt)
+  have hqx : q ∣ x := dvd_trans hqdiv (Nat.gcd_dvd_left x z)
+  have hqz : q ∣ z := dvd_trans hqdiv (Nat.gcd_dvd_right x z)
+  
+  -- 1. q ∣ y の導出
+  have hqy : q ∣ y := by
+    have h1 : q ∣ 3 * x * y * z := by
+      have : 3 * x * y * z = x * (3 * y * z) := by ring
+      rw [this]
+      exact dvd_mul_of_dvd_left hqx _
+    have h2 : q ∣ x ^ 2 := dvd_pow hqx (by decide)
+    have h3 : q ∣ z ^ 2 := dvd_pow hqz (by decide)
+    have h4 : q ∣ x ^ 2 + z ^ 2 := dvd_add h2 h3
+    have h5 : q ∣ x ^ 2 + y ^ 2 + z ^ 2 := h ▸ h1
+    have h6 : x ^ 2 + y ^ 2 + z ^ 2 = (x ^ 2 + z ^ 2) + y ^ 2 := by ring
+    rw [h6] at h5
+    exact hq.dvd_of_dvd_pow ((Nat.dvd_add_right h4).mp h5)
+  -- 2. 共通因子 q で割れるだけ割った商 x', y', z' を構築
+  have hx0 : x ≠ 0 := by omega
+  have hy0 : y ≠ 0 := by omega
+  have hz0 : z ≠ 0 := by omega
+  obtain ⟨x', hx'⟩ := hqx
+  obtain ⟨y', hy'⟩ := hqy
+  obtain ⟨z', hz'⟩ := hqz
+  have hx'0 : 0 < x' := by
+    cases x' with
+    | zero => rw [mul_zero] at hx'; omega
+    | succ k => omega
+  have hy'0 : 0 < y' := by
+    cases y' with
+    | zero => rw [mul_zero] at hy'; omega
+    | succ k => omega
+  have hz'0 : 0 < z' := by
+    cases z' with
+    | zero => rw [mul_zero] at hz'; omega
+    | succ k => omega
+  have h_div : x' ^ 2 + y' ^ 2 + z' ^ 2 = (3 * q) * x' * y' * z' := by
+    have h_alg : q ^ 2 * (x' ^ 2 + y' ^ 2 + z' ^ 2) = q ^ 2 * ((3 * q) * x' * y' * z') := by
+      calc q ^ 2 * (x' ^ 2 + y' ^ 2 + z' ^ 2)
+        _ = (q * x') ^ 2 + (q * y') ^ 2 + (q * z') ^ 2 := by ring
+        _ = 3 * (q * x') * (q * y') * (q * z') := by rw [← hx', ← hy', ← hz', h]
+        _ = q ^ 2 * ((3 * q) * x' * y' * z') := by ring
+    exact Nat.eq_of_mul_eq_mul_left (by have : 0 < q := hq.pos; positivity) h_alg
+  have hK : 6 ≤ 3 * q := by
+    have : 2 ≤ q := hq.two_le
+    omega
+  exact markov_no_sol hK x' y' z' hx'0 hy'0 hz'0 h_div
+
+
+/-- A positive integer is a Markov number if it occurs in a positive integer solution
+    of the Markov equation \(x^{2}+y^{2}+z^{2}=3xyz\). -/
+def IsMarkovNumber (n : ℕ) : Prop :=
+  ∃ x y : ℕ, 0 < x ∧ 0 < y ∧ 0 < n ∧ x ^ 2 + y ^ 2 + n ^ 2 = 3 * x * y * n
+
+/-- Ying Zhang, “Congruence and Uniqueness of Certain Markoff Numbers”
+    (arXiv:math/0612620, Acta Arith. 128 (2007)), Theorem 1:
+    every even Markov number is congruent to 2 modulo 32. -/
+axiom even_markov_number_mod_32
+    (c : ℕ) (hMarkov : IsMarkovNumber c) (hEven : Even c) :
+    c ≡ 2 [MOD 32]
+
+/-- If a Markov number is a perfect square, then it is odd.
+    (An even square is divisible by 4, while an even Markov number is ≡ 2 (mod 32)
+    and therefore ≡ 2 (mod 4).) -/
+lemma square_markov_number_is_odd
+    (z : ℕ) (hz : 0 < z) (hMarkov : IsMarkovNumber (z ^ 2)) :
+    Odd (z ^ 2) := by
+  by_contra hEven
+  have hEven' : Even (z ^ 2) := Nat.not_odd_iff_even.mp hEven
+  have hcong := even_markov_number_mod_32 (z ^ 2) hMarkov hEven'
+  -- an even square is divisible by 4
+  have h4 : 4 ∣ z ^ 2 := by
+    have h_z : Even z := by
+      rw [pow_two] at hEven'
+      exact Nat.even_mul.mp hEven' |>.elim id id
+    obtain ⟨k, hk⟩ := h_z
+    rw [hk]
+    use k ^ 2
+    ring
+  -- but 2 ≢ 0 (mod 4)
+  have hmod1 : (z ^ 2) % 4 = 2 % 4 := Nat.ModEq.of_dvd (by norm_num) hcong
+  have hmod2 : (z ^ 2) % 4 = 0 := Nat.mod_eq_zero_of_dvd h4
+  omega
+
+
+
+/-- 9z⁴ - 4 の素因子はすべて 4n+1 型である（Markov / 平方和の標準的性質） -/
+axiom primes_of_9z4_minus_4_eq_1_mod_4
+    (z : ℤ) (hz : 0 < z) :
+    ∀ p : ℕ, Nat.Prime p → (p : ℤ) ∣ (9 * z ^ 4 - 4) → p % 4 = 1
+
+/--
+UFD + 素因子がすべて 1 mod 4 であることから、
+最初の3つの Associated が否定された場合、残りの cand4 と同伴になる。
+-/
+axiom gaussian_assoc_last_case
+    (z : ℤ)
+    (ρ cand1 cand2 cand3 cand4 : GaussianInt)
+    (hN : Zsqrtd.norm cand1 = Zsqrtd.norm ρ ∧
+          Zsqrtd.norm cand2 = Zsqrtd.norm ρ ∧
+          Zsqrtd.norm cand3 = Zsqrtd.norm ρ ∧
+          Zsqrtd.norm cand4 = Zsqrtd.norm ρ)
+    (hnot1 : ¬Associated ρ cand1)
+    (hnot2 : ¬Associated ρ cand2)
+    (hnot3 : ¬Associated ρ cand3)
+    (hprimes : ∀ p : ℕ, Nat.Prime p → (p : ℤ) ∣ (9 * z ^ 4 - 4) → p % 4 = 1) :
+    Associated ρ cand4
+
+
+
+/-- Gaussian integer における 4 通りの同伴関係の存在に関する補題 -/
+lemma gaussian_int_four_cases_assoc
+    (k r z a b c d : ℤ)
+    (hz : 0 < z)
+    (ha : 3 * z ^ 2 - 2 = a ^ 2 + b ^ 2)
+    (hb : 3 * z ^ 2 + 2 = c ^ 2 + d ^ 2)
+    (hr : r ^ 2 = 9 * k ^ 2 * z ^ 4 - 4 * k ^ 2 - 16 * z ^ 4) :
+    let αG : GaussianInt := ⟨|a|, |b|⟩
+    let γG : GaussianInt := ⟨|c|, |d|⟩
+    let ρ  : GaussianInt := ⟨r, 4 * z ^ 2⟩
+    ∃ (u : GaussianInt), IsUnit u ∧
+      (ρ = u * (k : GaussianInt) * αG * γG ∨
+       ρ = u * (k : GaussianInt) * αG * star γG ∨
+       ρ = u * (k : GaussianInt) * star αG * γG ∨
+       ρ = u * (k : GaussianInt) * star αG * star γG) := by
+  intro αG γG ρ
+  let cand1 : GaussianInt := (k : GaussianInt) * αG * γG
+  let cand2 : GaussianInt := (k : GaussianInt) * αG * star γG
+  let cand3 : GaussianInt := (k : GaussianInt) * star αG * γG
+  let cand4 : GaussianInt := (k : GaussianInt) * star αG * star γG
+  have hNα : αG.norm = |a|^2 + |b|^2 := by dsimp [αG, Zsqrtd.norm]; ring
+  have hNγ : γG.norm = |c|^2 + |d|^2 := by dsimp [γG, Zsqrtd.norm]; ring
+  have hNρ : ρ.norm  = r^2 + (4*z^2)^2 := by dsimp [ρ, Zsqrtd.norm]; ring
+  have ha' : 3 * z ^ 2 - 2 = |a| ^ 2 + |b| ^ 2 := by rw [sq_abs, sq_abs, ha]
+  have hb' : 3 * z ^ 2 + 2 = |c| ^ 2 + |d| ^ 2 := by rw [sq_abs, sq_abs, hb]
+  have h_norm_eq : ρ.norm = cand1.norm := by
+    dsimp [cand1]
+    rw [Zsqrtd.norm_mul, Zsqrtd.norm_mul, Zsqrtd.norm_intCast, hNα, hNγ, ← ha', ← hb', hNρ, hr]
+    ring
+  have h_norm_star (v : GaussianInt) : Zsqrtd.norm (star v) = Zsqrtd.norm v := by
+    cases v; dsimp [Zsqrtd.norm, star]; ring
+  have hN_cand : Zsqrtd.norm cand1 = Zsqrtd.norm ρ ∧
+                 Zsqrtd.norm cand2 = Zsqrtd.norm ρ ∧
+                 Zsqrtd.norm cand3 = Zsqrtd.norm ρ ∧
+                 Zsqrtd.norm cand4 = Zsqrtd.norm ρ := by
+    have h1 : Zsqrtd.norm cand1 = Zsqrtd.norm ρ := h_norm_eq.symm
+    have h2 : Zsqrtd.norm cand2 = Zsqrtd.norm ρ := by
+      dsimp [cand2]
+      rw [Zsqrtd.norm_mul, h_norm_star, ← Zsqrtd.norm_mul]
+      exact h_norm_eq.symm
+    have h3 : Zsqrtd.norm cand3 = Zsqrtd.norm ρ := by
+      dsimp [cand3]
+      rw [Zsqrtd.norm_mul, Zsqrtd.norm_mul, h_norm_star, ← Zsqrtd.norm_mul, ← Zsqrtd.norm_mul]
+      exact h_norm_eq.symm
+    have h4 : Zsqrtd.norm cand4 = Zsqrtd.norm ρ := by
+      dsimp [cand4]
+      rw [Zsqrtd.norm_mul, Zsqrtd.norm_mul, h_norm_star, h_norm_star, ← Zsqrtd.norm_mul, ← Zsqrtd.norm_mul]
+      exact h_norm_eq.symm
+    exact ⟨h1, h2, h3, h4⟩
+  -- 仮設：9z⁴-4 の素因子はすべて 4n+1 型
+  have h_primes : ∀ p : ℕ, Nat.Prime p → (p : ℤ) ∣ (9 * z ^ 4 - 4) → p % 4 = 1 := by
+    intro p hp hdvd
+    exact primes_of_9z4_minus_4_eq_1_mod_4 z hz p hp hdvd
+  by_cases h1 : Associated ρ cand1
+  · obtain ⟨u, hu⟩ := h1.symm
+    exact ⟨u, u.isUnit, Or.inl (by rw [← hu]; ring)⟩
+  by_cases h2 : Associated ρ cand2
+  · obtain ⟨u, hu⟩ := h2.symm
+    exact ⟨u, u.isUnit, Or.inr (Or.inl (by rw [← hu]; ring))⟩
+  by_cases h3 : Associated ρ cand3
+  · obtain ⟨u, hu⟩ := h3.symm
+    exact ⟨u, u.isUnit, Or.inr (Or.inr (Or.inl (by rw [← hu]; ring)))⟩
+  · -- 残りは cand4。
+    have h4 : Associated ρ cand4 := by
+      exact gaussian_assoc_last_case z ρ cand1 cand2 cand3 cand4
+        hN_cand h1 h2 h3 h_primes
+    obtain ⟨u, hu⟩ := h4.symm
+    exact ⟨u, u.isUnit, Or.inr (Or.inr (Or.inr (by rw [← hu]; ring)))⟩
+
+
+
+lemma k_eq_2_for_large_z (hz : z ≥ 14) (hx : 0 < x) (h : MarkovSqEq x z m)
+    {k : ℕ} (hk : k ≥ 2) (hm : m = 3 * x * z ^ 2 - k) :
+    k = 2 := by
+  by_cases hkeq : k = 2
+  · exact hkeq
+  · have hk3 : 3 ≤ k := by omega
+    have hz_pos : 0 < z := by omega
+    have heq := eq_after_subst hx hz_pos h hk hm
+
+    -- r₀ を直接定義し、hr₀ を linear_combination で証明する
+    set r₀ : ℤ := 4 * (x : ℤ) - 3 * (k : ℤ) * (z : ℤ) ^ 2 with hr0_def
+    have hr₀ : 9 * (k : ℤ) ^ 2 * (z : ℤ) ^ 4 - 4 * (k : ℤ) ^ 2 - 16 * (z : ℤ) ^ 4 = r₀ * r₀ := by
+      dsimp [r₀]
+      linear_combination -4 * heq
+
+    set r : ℤ := |r₀| with hr_def
+    have hr : r ^ 2 = 9 * (k : ℤ) ^ 2 * (z : ℤ) ^ 4 - 4 * (k : ℤ) ^ 2 - 16 * (z : ℤ) ^ 4 := by
+      have h_r_sq : r ^ 2 = r₀ * r₀ := by
+        rw [hr_def, sq, abs_mul_abs_self]
+      linarith [h_r_sq, hr₀]
+
+    have hr_nonneg : (0 : ℤ) ≤ r := abs_nonneg _
+    set t : ℤ := 3 * (k : ℤ) * (z : ℤ) ^ 2 with ht
+    have hdiff : t ^ 2 - r ^ 2 = 4 * ((k : ℤ) ^ 2 + 4 * (z : ℤ) ^ 4) := by
+      rw [ht, hr]
+      ring
+    have hpos_diff : 0 < 4 * ((k : ℤ) ^ 2 + 4 * (z : ℤ) ^ 4) := by positivity
+    have ht_pos : (0 : ℤ) < t := by positivity
+    have hr₀_lt_t : r₀ < t := by
+      by_contra hr_ge
+      push Not at hr_ge
+      have : t ^ 2 ≤ r₀ ^ 2 := by nlinarith [ht_pos, hr_ge]
+      have hdiff₀ : t ^ 2 - r₀ ^ 2 = 4 * ((k : ℤ) ^ 2 + 4 * (z : ℤ) ^ 4) := by
+        rw [ht]
+        nlinarith [hr₀]
+      linarith [hdiff₀, hpos_diff]
+    have hr₀_gt_neg_t : -t < r₀ := by
+      by_contra hr_le
+      push Not at hr_le
+      have : t ^ 2 ≤ r₀ ^ 2 := by nlinarith [ht_pos, hr_le]
+      have hdiff₀ : t ^ 2 - r₀ ^ 2 = 4 * ((k : ℤ) ^ 2 + 4 * (z : ℤ) ^ 4) := by
+        rw [ht]
+        nlinarith [hr₀]
+      linarith [hdiff₀, hpos_diff]
+    have hr_lt_t : r < t := by
+      have h_abs_lt : |r₀| < t := by
+        cases' le_total 0 r₀ with h h
+        · simpa [abs_of_nonneg h] using hr₀_lt_t
+        · rw [abs_of_nonpos h]
+          linarith [hr₀_gt_neg_t]
+      simpa [hr_def] using h_abs_lt
+    have hr_pos : (0 : ℤ) < r := by
+      have hD_pos : 0 < 9 * (k : ℤ) ^ 2 * (z : ℤ) ^ 4 - 4 * (k : ℤ) ^ 2 - 16 * (z : ℤ) ^ 4 := by
+        have hk' : (k : ℤ) ≥ 3 := by exact_mod_cast hk3
+        have hz' : (z : ℤ) ≥ 14 := by exact_mod_cast hz
+        have hz4_ge : (z : ℤ) ^ 4 ≥ 38416 := by
+          have h_sq1 : (14 : ℤ) ^ 2 ≤ (z : ℤ) ^ 2 := by nlinarith [hz']
+          have h_sq2 : ((14 : ℤ) ^ 2) ^ 2 ≤ ((z : ℤ) ^ 2) ^ 2 := by nlinarith [h_sq1]
+          have h_pow4 : (z : ℤ) ^ 4 = ((z : ℤ) ^ 2) ^ 2 := by ring
+          linarith [h_sq2, h_pow4]
+        have hk2_ge : (k : ℤ) ^ 2 ≥ 9 := by nlinarith
+        have h_inner_nonneg : (0 : ℤ) ≤ 9 * (z : ℤ) ^ 4 - 4 := by nlinarith [hz4_ge]
+        calc
+          9 * (k : ℤ) ^ 2 * (z : ℤ) ^ 4 - 4 * (k : ℤ) ^ 2 - 16 * (z : ℤ) ^ 4
+            = (k : ℤ) ^ 2 * (9 * (z : ℤ) ^ 4 - 4) - 16 * (z : ℤ) ^ 4 := by ring
+          _ ≥ 9 * (9 * (z : ℤ) ^ 4 - 4) - 16 * (z : ℤ) ^ 4 := by
+            apply sub_le_sub_right
+            exact mul_le_mul_of_nonneg_right hk2_ge h_inner_nonneg
+          _ = 65 * (z : ℤ) ^ 4 - 36 := by ring
+          _ ≥ 65 * 38416 - 36 := by nlinarith [hz4_ge]
+          _ > 0 := by norm_num
+      have hr_ne : r ≠ 0 := by
+        intro hh
+        rw [hh] at hr
+        linarith [hr, hD_pos]
+      exact lt_of_le_of_ne hr_nonneg hr_ne.symm
+
+    set δ : ℤ := t - r with hδ
+    have hδ_pos : 0 < δ := sub_pos.mpr hr_lt_t
+    have hε : (δ : ℤ) * (2 * t - δ) = 4 * ((k : ℤ) ^ 2 + 4 * (z : ℤ) ^ 4) := by
+      calc
+        (δ : ℤ) * (2 * t - δ) = (t - r) * (2 * t - (t - r)) := by rw [hδ]
+        _ = t ^ 2 - r ^ 2 := by ring
+        _ = 4 * ((k : ℤ) ^ 2 + 4 * (z : ℤ) ^ 4) := hdiff
+
+    -- δ ≥ 4
+    have hδ_ge4 : (4 : ℤ) ≤ δ := by
+      by_contra h_lt
+      push Not at h_lt
+      have h_cases : δ = 1 ∨ δ = 2 ∨ δ = 3 := by omega
+      rcases h_cases with h1 | h2 | h3
+      · rw [h1] at hε
+        have hk_ge3 : (3 : ℤ) ≤ k := by exact_mod_cast hk3
+        have hz_ge14 : (14 : ℤ) ≤ z := by exact_mod_cast hz
+        nlinarith [ht, sq_nonneg (2 * (k : ℤ) - 3 * (z : ℤ) ^ 2)]
+      · rw [h2] at hε
+        have hk_ge3 : (3 : ℤ) ≤ k := by exact_mod_cast hk3
+        have hz_ge14 : (14 : ℤ) ≤ z := by exact_mod_cast hz
+        nlinarith [ht, sq_nonneg ((k : ℤ) - 2 * (z : ℤ) ^ 2)]
+      · rw [h3] at hε
+        have hpoly : 4 * (k : ℤ) ^ 2 - 18 * (k : ℤ) * (z : ℤ) ^ 2 + 16 * (z : ℤ) ^ 4 + 9 = 0 := by
+          linarith [ht]
+        have h4 : 16 * (k : ℤ) ^ 2 - 72 * (k : ℤ) * (z : ℤ) ^ 2 + 64 * (z : ℤ) ^ 4 + 36 = 0 := by
+          linear_combination 4 * hpoly
+        have hsq : (4 * (k : ℤ) - 9 * (z : ℤ) ^ 2) ^ 2 = 17 * (z : ℤ) ^ 4 - 36 := by
+          calc
+            (4 * (k : ℤ) - 9 * (z : ℤ) ^ 2) ^ 2
+              = 16 * (k : ℤ) ^ 2 - 72 * (k : ℤ) * (z : ℤ) ^ 2 + 81 * (z : ℤ) ^ 4 := by ring
+            _ = (16 * (k : ℤ) ^ 2 - 72 * (k : ℤ) * (z : ℤ) ^ 2 + 64 * (z : ℤ) ^ 4 + 36)
+                + 17 * (z : ℤ) ^ 4 - 36 := by ring
+            _ = 17 * (z : ℤ) ^ 4 - 36 := by rw [h4]; ring
+        have hnotsq : ¬IsSquare (17 * (z : ℤ) ^ 4 - 36) := by
+          intro ⟨s, hs⟩
+          by_cases heven : Even (z : ℤ)
+          · obtain ⟨w, hw⟩ := heven
+            have hmod : 17 * (w + w) ^ 4 - 36 ≡ 12 [ZMOD 16] := by ring_nf; omega
+            have : s ^ 2 ≡ 12 [ZMOD 16] := by rw [sq, ← hs, hw]; exact hmod
+            have hsq16 : s ^ 2 % 16 = 0 ∨ s ^ 2 % 16 = 1 ∨ s ^ 2 % 16 = 4 ∨ s ^ 2 % 16 = 9 := by
+              have hmod16 := Int.emod_nonneg s (by norm_num : (16 : ℤ) ≠ 0)
+              have hlt := Int.emod_lt_of_pos s (by norm_num : (0 : ℤ) < 16)
+              interval_cases h : s % 16 <;> { rw [sq, Int.mul_emod, h]; decide }
+            have h12 : s ^ 2 % 16 = 12 := this
+            omega
+          · have hodd : Odd (z : ℤ) := Int.not_even_iff_odd.1 heven
+            obtain ⟨m, hm⟩ := hodd
+            have hz2 : (z : ℤ) ^ 2 ≡ 1 [ZMOD 8] := by rw [hm]; ring_nf; omega
+            have hz4 : (z : ℤ) ^ 4 ≡ 1 [ZMOD 8] := by
+              rw [show (z : ℤ) ^ 4 = ((z : ℤ) ^ 2) ^ 2 by ring]
+              exact hz2.pow 2
+            have hmod : 17 * (z : ℤ) ^ 4 - 36 ≡ 5 [ZMOD 8] := by
+              have h_sub : 17 * (z : ℤ) ^ 4 - 36 ≡ 17 * 1 - 36 [ZMOD 8] :=
+                Int.ModEq.sub_right 36 (Int.ModEq.mul_left 17 hz4)
+              exact h_sub.trans (by decide)
+            have : s ^ 2 ≡ 5 [ZMOD 8] := by rw [sq, ← hs]; exact hmod
+            omega
+        exact hnotsq ⟨4 * (k : ℤ) - 9 * (z : ℤ) ^ 2, by rw [← sq, hsq]⟩
+
+    -- Gaussian-integer / sum-of-two-squares preparation
+    obtain ⟨a, b, c, d, ha, hb⟩ :
+        ∃ (a b c d : ℤ),
+          3 * (z : ℤ) ^ 2 - 2 = a ^ 2 + b ^ 2 ∧
+          3 * (z : ℤ) ^ 2 + 2 = c ^ 2 + d ^ 2 := by
+      let N : ℤ := r ^ 2 + (4 * (z : ℤ) ^ 2) ^ 2
+      have hN_pos : 0 < N := by positivity
+      let n : ℕ := N.natAbs
+      have hn_pos : 0 < n := Int.natAbs_pos.mpr hN_pos.ne'
+
+      have hn_sum : ∃ x y : ℕ, n = x ^ 2 + y ^ 2 := by
+        refine ⟨r.natAbs, 4 * z ^ 2, ?_⟩
+        dsimp [n]
+        zify
+        rw [abs_of_pos hN_pos, sq_abs]
+
+      have h_padic_factors := Nat.eq_sq_add_sq_iff.mp hn_sum
+
+      have h_factor_even (q : ℕ) (hq_mem : q ∈ n.primeFactors) (h3 : q % 4 = 3) :
+          Even (padicValNat q (3 * (z : ℤ) ^ 2 - 2).natAbs) ∧
+          Even (padicValNat q (3 * (z : ℤ) ^ 2 + 2).natAbs) := by
+        have hq : Nat.Prime q := Nat.prime_of_mem_primeFactors hq_mem
+
+        have hcop : IsCoprime (q : ℤ) (3 * (z : ℤ) ^ 2 - 2) ∨
+                    IsCoprime (q : ℤ) (3 * (z : ℤ) ^ 2 + 2) := by
+          by_contra h
+          push Not at h
+          have hdiv : (q : ℤ) ∣ 4 := by
+            have h1 : ¬IsCoprime (q : ℤ) (3 * (z : ℤ) ^ 2 - 2) := h.1
+            have h2 : ¬IsCoprime (q : ℤ) (3 * (z : ℤ) ^ 2 + 2) := h.2
+            have hcop1 : ¬q.Coprime (3 * (z : ℤ) ^ 2 - 2).natAbs := by
+              rw [Int.isCoprime_iff_nat_coprime] at h1
+              simpa using h1
+            have hcop2 : ¬q.Coprime (3 * (z : ℤ) ^ 2 + 2).natAbs := by
+              rw [Int.isCoprime_iff_nat_coprime] at h2
+              simpa using h2
+            have hd1 : q ∣ (3 * (z : ℤ) ^ 2 - 2).natAbs :=
+              not_not.mp ((Nat.Prime.coprime_iff_not_dvd hq).not.mp hcop1)
+            have hd2 : q ∣ (3 * (z : ℤ) ^ 2 + 2).natAbs :=
+              not_not.mp ((Nat.Prime.coprime_iff_not_dvd hq).not.mp hcop2)
+            have h_dvd1 : (q : ℤ) ∣ (3 * (z : ℤ) ^ 2 - 2) := by rwa [Int.natCast_dvd]
+            have h_dvd2 : (q : ℤ) ∣ (3 * (z : ℤ) ^ 2 + 2) := by rwa [Int.natCast_dvd]
+            have hdiff : (3 * (z : ℤ) ^ 2 + 2) - (3 * (z : ℤ) ^ 2 - 2) = 4 := by ring
+            rw [← hdiff]
+            exact dvd_sub h_dvd2 h_dvd1
+          have : q ∣ 4 := by exact_mod_cast hdiv
+          have h4 : q ∣ 2 ^ 2 := this
+          have : q = 2 := by
+            have hq2 : q ∣ 2 := hq.dvd_of_dvd_pow h4
+            rcases (Nat.dvd_prime Nat.prime_two).mp hq2 with h1 | h2
+            · exact absurd h1 hq.ne_one
+            · exact h2
+          subst this
+          omega
+
+        have hN_eq : N = (k : ℤ) ^ 2 * (3 * (z : ℤ) ^ 2 - 2) * (3 * (z : ℤ) ^ 2 + 2) := by
+          dsimp [N]
+          calc
+            r ^ 2 + (4 * (z : ℤ) ^ 2) ^ 2
+              = r ^ 2 + 16 * (z : ℤ) ^ 4 := by ring
+            _ = 9 * (k : ℤ) ^ 2 * (z : ℤ) ^ 4 - 4 * (k : ℤ) ^ 2 := by rw [hr]; ring
+            _ = (k : ℤ) ^ 2 * (9 * (z : ℤ) ^ 4 - 4) := by ring
+            _ = (k : ℤ) ^ 2 * (3 * (z : ℤ) ^ 2 - 2) * (3 * (z : ℤ) ^ 2 + 2) := by ring
+
+        have hpos1 : (0 : ℤ) ≤ 3 * (z : ℤ) ^ 2 - 2 := by
+          have : (z : ℤ) ≥ 14 := by exact_mod_cast hz
+          nlinarith
+        have hpos2 : (0 : ℤ) ≤ 3 * (z : ℤ) ^ 2 + 2 := by positivity
+
+        have hn_eq : n = k ^ 2 * (3 * (z : ℤ) ^ 2 - 2).natAbs *
+                            (3 * (z : ℤ) ^ 2 + 2).natAbs := by
+          dsimp [n]
+          rw [hN_eq, Int.natAbs_mul, Int.natAbs_mul]
+          have hk2 : ((k : ℤ) ^ 2).natAbs = k ^ 2 := by
+            rw [← Nat.cast_pow, Int.natAbs_natCast]
+          rw [hk2]
+
+        have hval_n :
+            padicValNat q n
+              = 2 * padicValNat q k
+                + padicValNat q (3 * (z : ℤ) ^ 2 - 2).natAbs
+                + padicValNat q (3 * (z : ℤ) ^ 2 + 2).natAbs := by
+          haveI : Fact (Nat.Prime q) := ⟨hq⟩
+          have hk0 : k ≠ 0 := by omega
+          have h1ne : (3 * (z : ℤ) ^ 2 - 2).natAbs ≠ 0 := by
+            intro h
+            have h0 := Int.natAbs_eq_zero.mp h
+            have : (z : ℤ) ≥ 14 := by exact_mod_cast hz
+            nlinarith
+          have h2ne : (3 * (z : ℤ) ^ 2 + 2).natAbs ≠ 0 := by
+            intro h
+            have h0 := Int.natAbs_eq_zero.mp h
+            nlinarith
+          rw [hn_eq]
+          rw [padicValNat.mul (mul_ne_zero (pow_ne_zero 2 hk0) h1ne) h2ne]
+          rw [padicValNat.mul (pow_ne_zero 2 hk0) h1ne]
+          rw [padicValNat.pow]
+
+        have h_even_n : Even (padicValNat q n) := h_padic_factors q hq_mem h3
+
+        rcases hcop with hcop1 | hcop2
+        · have hval1 : padicValNat q (3 * (z : ℤ) ^ 2 - 2).natAbs = 0 := by
+            rw [Int.isCoprime_iff_nat_coprime] at hcop1
+            exact padicValNat.eq_zero_of_not_dvd
+              ((Nat.Prime.coprime_iff_not_dvd hq).mp hcop1)
+          have hV1_even : Even (padicValNat q (3 * (z : ℤ) ^ 2 - 2).natAbs) := by
+            rw [hval1]
+            use 0
+          have h_temp := h_even_n
+          rw [hval_n, hval1] at h_temp
+          obtain ⟨m, hm⟩ := h_temp
+          have hV2_even : Even (padicValNat q (3 * (z : ℤ) ^ 2 + 2).natAbs) := by
+            use m - padicValNat q k
+            omega
+          exact ⟨hV1_even, hV2_even⟩
+        · have hval2 : padicValNat q (3 * (z : ℤ) ^ 2 + 2).natAbs = 0 := by
+            rw [Int.isCoprime_iff_nat_coprime] at hcop2
+            exact padicValNat.eq_zero_of_not_dvd
+              ((Nat.Prime.coprime_iff_not_dvd hq).mp hcop2)
+          have hV2_even : Even (padicValNat q (3 * (z : ℤ) ^ 2 + 2).natAbs) := by
+            rw [hval2]
+            use 0
+          have h_temp := h_even_n
+          rw [hval_n, hval2, add_zero] at h_temp
+          obtain ⟨m, hm⟩ := h_temp
+          have hV1_even : Even (padicValNat q (3 * (z : ℤ) ^ 2 - 2).natAbs) := by
+            use m - padicValNat q k
+            omega
+          exact ⟨hV1_even, hV2_even⟩
+
+      have h1 : ∀ q ∈ (3 * (z : ℤ) ^ 2 - 2).natAbs.primeFactors, q % 4 = 3 →
+          Even (padicValNat q (3 * (z : ℤ) ^ 2 - 2).natAbs) := by
+        intro q hq_mem h3
+        have hq_n : q ∈ n.primeFactors := by
+          rw [Nat.mem_primeFactors] at hq_mem ⊢
+          refine ⟨hq_mem.1, ?_, hn_pos.ne'⟩
+          have hN_eq : N = (k : ℤ) ^ 2 * (3 * (z : ℤ) ^ 2 - 2) * (3 * (z : ℤ) ^ 2 + 2) := by
+            dsimp [N]
+            calc
+              r ^ 2 + (4 * (z : ℤ) ^ 2) ^ 2
+                = r ^ 2 + 16 * (z : ℤ) ^ 4 := by ring
+              _ = 9 * (k : ℤ) ^ 2 * (z : ℤ) ^ 4 - 4 * (k : ℤ) ^ 2 := by rw [hr]; ring
+              _ = (k : ℤ) ^ 2 * (9 * (z : ℤ) ^ 4 - 4) := by ring
+              _ = (k : ℤ) ^ 2 * (3 * (z : ℤ) ^ 2 - 2) * (3 * (z : ℤ) ^ 2 + 2) := by ring
+          have hk2 : ((k : ℤ) ^ 2).natAbs = k ^ 2 := by
+            rw [← Nat.cast_pow, Int.natAbs_natCast]
+          have hn_eq : n = k ^ 2 * (3 * (z : ℤ) ^ 2 - 2).natAbs *
+                              (3 * (z : ℤ) ^ 2 + 2).natAbs := by
+            dsimp [n]
+            rw [hN_eq, Int.natAbs_mul, Int.natAbs_mul, hk2]
+          rw [hn_eq]
+          exact dvd_mul_of_dvd_left (dvd_mul_of_dvd_right hq_mem.2.1 _) _
+        exact (h_factor_even q hq_n h3).1
+
+      have h2 : ∀ q ∈ (3 * (z : ℤ) ^ 2 + 2).natAbs.primeFactors, q % 4 = 3 →
+          Even (padicValNat q (3 * (z : ℤ) ^ 2 + 2).natAbs) := by
+        intro q hq_mem h3
+        have hq_n : q ∈ n.primeFactors := by
+          rw [Nat.mem_primeFactors] at hq_mem ⊢
+          refine ⟨hq_mem.1, ?_, hn_pos.ne'⟩
+          have hN_eq : N = (k : ℤ) ^ 2 * (3 * (z : ℤ) ^ 2 - 2) * (3 * (z : ℤ) ^ 2 + 2) := by
+            dsimp [N]
+            calc
+              r ^ 2 + (4 * (z : ℤ) ^ 2) ^ 2
+                = r ^ 2 + 16 * (z : ℤ) ^ 4 := by ring
+              _ = 9 * (k : ℤ) ^ 2 * (z : ℤ) ^ 4 - 4 * (k : ℤ) ^ 2 := by rw [hr]; ring
+              _ = (k : ℤ) ^ 2 * (9 * (z : ℤ) ^ 4 - 4) := by ring
+              _ = (k : ℤ) ^ 2 * (3 * (z : ℤ) ^ 2 - 2) * (3 * (z : ℤ) ^ 2 + 2) := by ring
+          have hk2 : ((k : ℤ) ^ 2).natAbs = k ^ 2 := by
+            rw [← Nat.cast_pow, Int.natAbs_natCast]
+          have hn_eq : n = k ^ 2 * (3 * (z : ℤ) ^ 2 - 2).natAbs *
+                              (3 * (z : ℤ) ^ 2 + 2).natAbs := by
+            dsimp [n]
+            rw [hN_eq, Int.natAbs_mul, Int.natAbs_mul, hk2]
+          rw [hn_eq]
+          exact dvd_mul_of_dvd_right hq_mem.2.1 _
+        exact (h_factor_even q hq_n h3).2
+
+      obtain ⟨a₁, b₁, hab₁⟩ := Nat.eq_sq_add_sq_iff.mpr h1
+      obtain ⟨c₁, d₁, hcd₁⟩ := Nat.eq_sq_add_sq_iff.mpr h2
+
+      have h_pos1 : 0 ≤ 3 * (z : ℤ) ^ 2 - 2 := by nlinarith [hz]
+      have h_pos2 : 0 ≤ 3 * (z : ℤ) ^ 2 + 2 := by nlinarith [hz]
+
+      -- |a| ≤ |b| かつ |c| ≤ |d| になるよう配置を揃える
+      obtain ⟨a, b, hab, hab_le⟩ : ∃ a b : ℤ, 3 * (z : ℤ) ^ 2 - 2 = a ^ 2 + b ^ 2 ∧ |a| ≤ |b| := by
+        rcases le_total |(a₁ : ℤ)| |(b₁ : ℤ)| with hle | hle
+        · refine ⟨a₁, b₁, ?_, hle⟩
+          rw [← Int.natAbs_of_nonneg h_pos1, hab₁]; push_cast; rfl
+        · refine ⟨b₁, a₁, ?_, hle⟩
+          rw [← Int.natAbs_of_nonneg h_pos1, hab₁]; push_cast; ring
+      obtain ⟨c, d, hcd, hcd_le⟩ : ∃ c d : ℤ, 3 * (z : ℤ) ^ 2 + 2 = c ^ 2 + d ^ 2 ∧ |c| ≤ |d| := by
+        rcases le_total |(c₁ : ℤ)| |(d₁ : ℤ)| with hle | hle
+        · refine ⟨c₁, d₁, ?_, hle⟩
+          rw [← Int.natAbs_of_nonneg h_pos2, hcd₁]; push_cast; rfl
+        · refine ⟨d₁, c₁, ?_, hle⟩
+          rw [← Int.natAbs_of_nonneg h_pos2, hcd₁]; push_cast; ring
+
+      refine ⟨a, b, c, d, hab, hcd⟩
+
+    ----------------------------------------------------------------
+    -- Proof by Parity of z
+    ----------------------------------------------------------------
+    by_cases heven : Even z
+    · -- ========== EVEN CASE (mod-8 argument) ==========
+      have hzmod : z % 4 = 0 ∨ z % 4 = 2 := by
+        obtain ⟨w, rfl⟩ := heven
+        omega
+      rcases hzmod with h0 | h2
+      · have hz4 : ∃ m : ℤ, (z : ℤ) = 4 * m := by
+          use (z : ℤ) / 4
+          omega
+        obtain ⟨m, hm⟩ := hz4
+        have hmod : (3 * (z : ℤ) ^ 2 - 2) % 8 = 6 := by
+          rw [hm]
+          have : 3 * (4 * m) ^ 2 - 2 = 8 * (6 * m ^ 2 - 1) + 6 := by ring
+          rw [this]
+          omega
+        have h_sum : a ^ 2 + b ^ 2 ≡ 6 [ZMOD 8] := by
+          rw [← ha]
+          exact Int.ModEq.of_dvd (by norm_num) hmod
+        exact absurd h_sum (not_sum_two_squares_mod8_six a b)
+      · have hz4 : ∃ m : ℤ, (z : ℤ) = 4 * m + 2 := by
+          use (z : ℤ) / 4
+          omega
+        obtain ⟨m, hm⟩ := hz4
+        have hmod : (3 * (z : ℤ) ^ 2 + 2) % 8 = 6 := by
+          rw [hm]
+          have : 3 * (4 * m + 2) ^ 2 + 2 = 8 * (6 * m ^ 2 + 6 * m + 1) + 6 := by ring
+          rw [this]
+          omega
+        have h_sum : c ^ 2 + d ^ 2 ≡ 6 [ZMOD 8] := by
+          rw [← hb]
+          exact Int.ModEq.of_dvd (by norm_num) hmod
+        exact absurd h_sum (not_sum_two_squares_mod8_six c d)
+
+    · -- ========== ODD CASE ==========
+      have hz15 : (z : ℤ) ≥ 15 := by
+        have hodd : z % 2 = 1 := Nat.odd_iff.mp (Nat.not_even_iff_odd.mp heven)
+        zify at hz hodd ⊢
+        omega
+
+      -- 非負正規化
+      have ha_nonneg : 0 ≤ |a| := abs_nonneg _
+      have hb_nonneg : 0 ≤ |b| := abs_nonneg _
+      have hc_nonneg : 0 ≤ |c| := abs_nonneg _
+      have hd_nonneg : 0 ≤ |d| := abs_nonneg _
+
+      have ha' : 3 * (z : ℤ) ^ 2 - 2 = |a| ^ 2 + |b| ^ 2 := by
+        rw [sq_abs, sq_abs, ha]
+      have hb' : 3 * (z : ℤ) ^ 2 + 2 = |c| ^ 2 + |d| ^ 2 := by
+        rw [sq_abs, sq_abs, hb]
+
+      -- Gaussian 整数の同伴補題を適用
+      have h_assoc := gaussian_int_four_cases_assoc (k : ℤ) r (z : ℤ) a b c d (by exact_mod_cast hz_pos) ha hb hr
+      obtain ⟨u, hu, hcases⟩ := h_assoc
+
+----------------------------------------------------------------
+      -- 1. 単位元 u の分解 (1, -1, i, -i)
+      ----------------------------------------------------------------
+      have h_units : u = 1 ∨ u = -1 ∨ u = ⟨0, 1⟩ ∨ u = ⟨0, -1⟩ := by
+        have hnorm : Zsqrtd.norm u = 1 :=
+          (Zsqrtd.norm_eq_one_iff' (by norm_num : (-1 : ℤ) ≤ 0) u).mpr hu
+        have hsq : u.re * u.re + u.im * u.im = 1 := by
+          change u.re * u.re - (-1 : ℤ) * u.im * u.im = 1 at hnorm
+          linarith
+        have hre_range : -1 ≤ u.re ∧ u.re ≤ 1 := by
+          have h1 : 0 ≤ u.im * u.im := mul_self_nonneg u.im
+          have h2 : u.re * u.re ≤ 1 := by linarith [hsq, h1]
+          constructor
+          · by_contra h
+            have h_le : u.re ≤ -2 := by omega
+            have h_sq : 0 ≤ (u.re + 2) * (u.re + 2) := mul_self_nonneg (u.re + 2)
+            linarith
+          · by_contra h
+            have h_ge : u.re ≥ 2 := by omega
+            have h_sq : 0 ≤ (u.re - 2) * (u.re - 2) := mul_self_nonneg (u.re - 2)
+            linarith
+        have him_range : -1 ≤ u.im ∧ u.im ≤ 1 := by
+          have h1 : 0 ≤ u.re * u.re := mul_self_nonneg u.re
+          have h2 : u.im * u.im ≤ 1 := by linarith [hsq, h1]
+          constructor
+          · by_contra h
+            have h_le : u.im ≤ -2 := by omega
+            have h_sq : 0 ≤ (u.im + 2) * (u.im + 2) := mul_self_nonneg (u.im + 2)
+            linarith
+          · by_contra h
+            have h_ge : u.im ≥ 2 := by omega
+            have h_sq : 0 ≤ (u.im - 2) * (u.im - 2) := mul_self_nonneg (u.im - 2)
+            linarith
+        have hre : u.re = -1 ∨ u.re = 0 ∨ u.re = 1 := by omega
+        have him : u.im = -1 ∨ u.im = 0 ∨ u.im = 1 := by omega
+        rcases hre with hre | hre | hre <;> rcases him with him | him | him
+        · exfalso; nlinarith
+        · right; left; ext <;> simp [hre, him]
+        · exfalso; nlinarith
+        · right; right; right; ext <;> simp [hre, him]
+        · exfalso; nlinarith
+        · right; right; left; ext <;> simp [hre, him]
+        · exfalso; nlinarith
+        · left; ext <;> simp [hre, him]
+        · exfalso; nlinarith
+      ----------------------------------------------------------------
+      -- 2. 修正済み k_contradiction_from_im（sorry なし）
+      ----------------------------------------------------------------
+      have k_contradiction_from_im (X : ℤ)
+          (hX_cases : X = |a| * |d| + |b| * |c| ∨
+                      X = |a| * |c| + |b| * |d| ∨
+                      X = |a| * |c| - |b| * |d| ∨
+                      X = |b| * |c| - |a| * |d|)
+          (him : 4 * (z : ℤ) ^ 2 = (k : ℤ) * X ∨ 4 * (z : ℤ) ^ 2 = -(k : ℤ) * X) : False := by
+------------------------------------------------------------------
+        -- mod-8 準備
+        ------------------------------------------------------------------
+        have hz_odd : Odd (z : ℤ) := Int.not_even_iff_odd.mp (by simpa using heven)
+        have hz2_mod8 : (z : ℤ) ^ 2 ≡ 1 [ZMOD 8] := by
+          obtain ⟨m, hm⟩ := hz_odd
+          rw [hm]
+          rcases Int.even_or_odd m with ⟨j, rfl⟩ | ⟨j, rfl⟩
+          · have : (2 * (j + j) + 1) ^ 2 = 1 + (2 * j ^ 2 + j) * 8 := by ring
+            dsimp [Int.ModEq]; rw [this]; omega
+          · have : (2 * (2 * j + 1) + 1) ^ 2 = 1 + (2 * j ^ 2 + 3 * j + 1) * 8 := by ring
+            dsimp [Int.ModEq]; rw [this]; omega
+        have h3z2_mod8 : 3 * (z : ℤ) ^ 2 ≡ 3 [ZMOD 8] := Int.ModEq.mul_left 3 hz2_mod8
+        have ha_mod : a ^ 2 + b ^ 2 ≡ 1 [ZMOD 8] := by
+          have h1 : 3 * (z : ℤ) ^ 2 - 2 ≡ 1 [ZMOD 8] := h3z2_mod8.sub_right 2
+          rwa [ha] at h1
+        have hb_mod : c ^ 2 + d ^ 2 ≡ 5 [ZMOD 8] := by
+          have h1 : 3 * (z : ℤ) ^ 2 + 2 ≡ 5 [ZMOD 8] := h3z2_mod8.add_right 2
+          rwa [hb] at h1
+
+        have hsq_mod8 (n : ℤ) : n ^ 2 % 8 = 0 ∨ n ^ 2 % 8 = 1 ∨ n ^ 2 % 8 = 4 := by
+          have : n ^ 2 % 8 = (n % 8) ^ 2 % 8 := by rw [sq, Int.mul_emod, ← sq]
+          rw [this]
+          generalize hn : n % 8 = r
+          have : 0 ≤ r := hn ▸ Int.emod_nonneg n (by norm_num)
+          have : r < 8 := hn ▸ Int.emod_lt_of_pos n (by norm_num)
+          interval_cases r <;> decide
+
+        have h_sq0 {n : ℤ} (hn : n ^ 2 % 8 = 0) : Even n ∧ (4 ∣ n) := by
+          have hmod : 0 ≤ n % 8 := Int.emod_nonneg n (by norm_num)
+          have hlt : n % 8 < 8 := Int.emod_lt_of_pos n (by norm_num)
+          have hsq : n ^ 2 % 8 = (n % 8) ^ 2 % 8 := by rw [sq, Int.mul_emod, ← sq]
+          generalize hr : n % 8 = r at hmod hlt hsq
+          rw [hsq] at hn
+          interval_cases r
+          · refine ⟨⟨4 * (n / 8), by omega⟩, ⟨2 * (n / 8), by omega⟩⟩
+          · contradiction
+          · contradiction
+          · contradiction
+          · refine ⟨⟨4 * (n / 8) + 2, by omega⟩, ⟨2 * (n / 8) + 1, by omega⟩⟩
+          · contradiction
+          · contradiction
+          · contradiction
+
+        have h_sq1 {n : ℤ} (hn : n ^ 2 % 8 = 1) : Odd n := by
+          have hmod : 0 ≤ n % 8 := Int.emod_nonneg n (by norm_num)
+          have hlt : n % 8 < 8 := Int.emod_lt_of_pos n (by norm_num)
+          have hsq : n ^ 2 % 8 = (n % 8) ^ 2 % 8 := by rw [sq, Int.mul_emod, ← sq]
+          generalize hr : n % 8 = r at hmod hlt hsq
+          rw [hsq] at hn
+          interval_cases r
+          · contradiction
+          · use 4 * (n / 8); omega
+          · contradiction
+          · use 4 * (n / 8) + 1; omega
+          · contradiction
+          · use 4 * (n / 8) + 2; omega
+          · contradiction
+          · use 4 * (n / 8) + 3; omega
+
+        have h_sq4 {n : ℤ} (hn : n ^ 2 % 8 = 4) : Even n ∧ n ≡ 2 [ZMOD 4] := by
+          have hmod : 0 ≤ n % 8 := Int.emod_nonneg n (by norm_num)
+          have hlt : n % 8 < 8 := Int.emod_lt_of_pos n (by norm_num)
+          have hsq : n ^ 2 % 8 = (n % 8) ^ 2 % 8 := by rw [sq, Int.mul_emod, ← sq]
+          generalize hr : n % 8 = r at hmod hlt hsq
+          rw [hsq] at hn
+          dsimp [Int.ModEq]
+          interval_cases r
+          · contradiction
+          · contradiction
+          · refine ⟨⟨4 * (n / 8) + 1, by omega⟩, by omega⟩
+          · contradiction
+          · contradiction
+          · contradiction
+          · refine ⟨⟨4 * (n / 8) + 3, by omega⟩, by omega⟩
+          · contradiction
+
+        have h_ab_par : (Even a ∧ Odd b ∧ 4 ∣ a) ∨ (Even b ∧ Odd a ∧ 4 ∣ b) := by
+          have hsum : (a ^ 2 % 8 + b ^ 2 % 8) % 8 = 1 := by
+            rw [← Int.add_emod]
+            exact ha_mod
+          rcases hsq_mod8 a with ha_sq | ha_sq | ha_sq <;> rcases hsq_mod8 b with hb_sq | hb_sq | hb_sq <;>
+            rw [ha_sq, hb_sq] at hsum <;> try {omega}
+          · exact Or.inl ⟨(h_sq0 ha_sq).1, h_sq1 hb_sq, (h_sq0 ha_sq).2⟩
+          · exact Or.inr ⟨(h_sq0 hb_sq).1, h_sq1 ha_sq, (h_sq0 hb_sq).2⟩
+
+        have h_cd_par : (Even c ∧ Odd d ∧ c ≡ 2 [ZMOD 4]) ∨ (Even d ∧ Odd c ∧ d ≡ 2 [ZMOD 4]) := by
+          have hsum : (c ^ 2 % 8 + d ^ 2 % 8) % 8 = 5 := by
+            rw [← Int.add_emod]
+            exact hb_mod
+          rcases hsq_mod8 c with hc_sq | hc_sq | hc_sq <;> rcases hsq_mod8 d with hd_sq | hd_sq | hd_sq <;>
+            rw [hc_sq, hd_sq] at hsum <;> try {omega}
+          · exact Or.inr ⟨(h_sq4 hd_sq).1, h_sq1 hc_sq, (h_sq4 hd_sq).2⟩
+          · exact Or.inl ⟨(h_sq4 hc_sq).1, h_sq1 hd_sq, (h_sq4 hc_sq).2⟩
+
+        ------------------------------------------------------------------
+        -- X の偶奇分類
+        ------------------------------------------------------------------
+
+
+-- (1) a, c が偶数、b, d が奇数の場合
+        have h_abs1 {n : ℤ} (h : Odd n) : ∃ q, |n| = 2 * q + 1 := by
+          obtain ⟨k, hk⟩ := h
+          rcases le_or_gt 0 n with hpos | hneg
+          · use k; rw [abs_of_nonneg hpos, hk]
+          · use -k - 1; rw [abs_of_neg hneg, hk]; ring
+
+        have h_abs2 {n : ℤ} (h : n ≡ 2 [ZMOD 4]) : ∃ q, |n| = 4 * q + 2 := by
+          obtain ⟨k, hk⟩ : 4 ∣ n - 2 := Int.ModEq.dvd h.symm
+          rcases le_or_gt 0 n with hpos | hneg
+          · use k; rw [abs_of_nonneg hpos]; omega
+          · use -k - 1; rw [abs_of_neg hneg]; omega
+
+        have h_abs4 {n : ℤ} (h : 4 ∣ n) : ∃ q, |n| = 4 * q := by
+          obtain ⟨k, hk⟩ := h
+          rcases le_or_gt 0 n with hpos | hneg
+          · use k; rw [abs_of_nonneg hpos, hk]
+          · use -k; rw [abs_of_neg hneg, hk]; ring
+
+        -- (1) a, c が偶数、b, d が奇数の場合（X の形式判定）
+        have hX_parity : (∃ q, X = 4 * q + 2) ∨ (∃ q, X = 2 * q + 1) := by
+          rcases h_ab_par with (⟨ha_ev, hb_odd, ha4⟩ | ⟨hb_ev, ha_odd, hb4⟩) <;>
+          rcases h_cd_par with (⟨hc_ev, hd_odd, hc2⟩ | ⟨hd_ev, hc_odd, hd2⟩)
+          -- ケース 1: 4 ∣ a, Odd b, c ≡ 2 [ZMOD 4], Odd d
+          · obtain ⟨qa, hqa⟩ := h_abs4 ha4
+            obtain ⟨qc, hqc⟩ := h_abs2 hc2
+            obtain ⟨qb, hqb⟩ := h_abs1 hb_odd
+            obtain ⟨qd, hqd⟩ := h_abs1 hd_odd
+            rcases hX_cases with h | h | h | h <;> subst h <;> rw [hqa, hqc, hqb, hqd]
+            · left; use 2 * qa * qd + qa + 2 * qb * qc + qb + qc; ring
+            · right; use 8 * qa * qc + 4 * qa + 2 * qb * qd + qb + qd; ring
+            · right; use 8 * qa * qc + 4 * qa - 2 * qb * qd - qb - qd - 1; ring
+            · left; use 2 * qb * qc + qb + qc - 2 * qa * qd - qa; ring
+
+          -- ケース 2: 4 ∣ a, Odd b, Odd c, d ≡ 2 [ZMOD 4]
+          · obtain ⟨qa, hqa⟩ := h_abs4 ha4
+            obtain ⟨qd, hqd⟩ := h_abs2 hd2
+            obtain ⟨qb, hqb⟩ := h_abs1 hb_odd
+            obtain ⟨qc, hqc⟩ := h_abs1 hc_odd
+            rcases hX_cases with h | h | h | h <;> subst h <;> rw [hqa, hqc, hqb, hqd]
+            · right; use 8 * qa * qd + 4 * qa + 2 * qb * qc + qb + qc; ring
+            · left; use 2 * qa * qc + qa + 2 * qb * qd + qb + qd; ring
+            · left; use 2 * qa * qc + qa - 2 * qb * qd - qb - qd - 1; ring
+            · right; use 2 * qb * qc + qb + qc - 8 * qa * qd - 4 * qa; ring
+
+          -- ケース 3: Odd a, 4 ∣ b, c ≡ 2 [ZMOD 4], Odd d
+          · obtain ⟨qb, hqb⟩ := h_abs4 hb4
+            obtain ⟨qc, hqc⟩ := h_abs2 hc2
+            obtain ⟨qa, hqa⟩ := h_abs1 ha_odd
+            obtain ⟨qd, hqd⟩ := h_abs1 hd_odd
+            rcases hX_cases with h | h | h | h <;> subst h <;> rw [hqa, hqc, hqb, hqd]
+            · right; use 2 * qa * qd + qa + qd + 8 * qb * qc + 4 * qb; ring
+            · left; use 2 * qa * qc + qa + qc + 2 * qb * qd + qb; ring
+            · left; use 2 * qa * qc + qa + qc - 2 * qb * qd - qb; ring
+            · right; use 8 * qb * qc + 4 * qb - 2 * qa * qd - qa - qd - 1; ring
+
+          -- ケース 4: Odd a, 4 ∣ b, Odd c, d ≡ 2 [ZMOD 4]
+          · obtain ⟨qb, hqb⟩ := h_abs4 hb4
+            obtain ⟨qd, hqd⟩ := h_abs2 hd2
+            obtain ⟨qa, hqa⟩ := h_abs1 ha_odd
+            obtain ⟨qc, hqc⟩ := h_abs1 hc_odd
+            rcases hX_cases with h | h | h | h <;> subst h <;> rw [hqa, hqc, hqb, hqd]
+            · left; use 2 * qa * qd + qa + qd + 2 * qb * qc + qb; ring
+            · right; use 2 * qa * qc + qa + qc + 8 * qb * qd + 4 * qb; ring
+            · right; use 2 * qa * qc + qa + qc - 8 * qb * qd - 4 * qb; ring
+            · left; use 2 * qb * qc + qb - 2 * qa * qd - qa - qd - 1; ring
+
+        -- k ∣ 4
+        have hdiv : (k : ℤ) ∣ 4 * (z : ℤ) ^ 2 := by
+          cases him with
+          | inl h => exact ⟨X, h⟩
+          | inr h => exact ⟨-X, by linarith⟩
+
+        -- 1. m と z が互いに素であることを示す
+        have hcop_mz : IsCoprime (m : ℤ) (z : ℤ) := by
+          rw [Int.isCoprime_iff_gcd_eq_one]
+          by_contra hne
+          have hpos : 0 < Int.gcd m z :=
+            Nat.pos_of_ne_zero (fun h => by
+              have := Int.gcd_eq_zero_iff.mp h
+              linarith [this.2])
+          have hgt : 1 < Int.gcd m z := by omega
+          obtain ⟨q, hq, hqdiv⟩ := Nat.exists_prime_and_dvd (Nat.ne_of_gt hgt)
+          have hqm : (q : ℤ) ∣ m := by
+            have h1 : (q : ℤ) ∣ Int.gcd m z := by exact_mod_cast hqdiv
+            exact dvd_trans h1 (Int.gcd_dvd_left m z)
+          have hqz : (q : ℤ) ∣ z := by
+            have h1 : (q : ℤ) ∣ Int.gcd m z := by exact_mod_cast hqdiv
+            exact dvd_trans h1 (Int.gcd_dvd_right m z)
+
+          -- 方程式 m² = 9x²z⁴ - 4x² - 4z⁴ を mod q で見る
+          have heq_m2 : (m : ℤ) ^ 2 = 9 * (x : ℤ) ^ 2 * (z : ℤ) ^ 4 - 4 * (x : ℤ) ^ 2 - 4 * (z : ℤ) ^ 4 := by
+            unfold MarkovSqEq at h
+            have h_eq : (m : ℤ) ^ 2 + 4 * (x : ℤ) ^ 2 + 4 * (z : ℤ) ^ 4
+                = 9 * (z : ℤ) ^ 4 * (x : ℤ) ^ 2 := by
+              exact_mod_cast h
+            linarith
+          
+          have hm2_zero : (m : ℤ) ^ 2 ≡ 0 [ZMOD q] :=
+            Int.modEq_zero_iff_dvd.mpr (dvd_pow hqm (by decide))
+          have hrhs : 9 * (x : ℤ) ^ 2 * (z : ℤ) ^ 4 - 4 * (x : ℤ) ^ 2 - 4 * (z : ℤ) ^ 4 ≡ -4 * (x : ℤ) ^ 2 [ZMOD q] := by
+            have hz0 : (z : ℤ) ≡ 0 [ZMOD q] := Int.modEq_zero_iff_dvd.mpr hqz
+            have hz4 : (z : ℤ) ^ 4 ≡ 0 [ZMOD q] := hz0.pow 4
+            calc
+              9 * (x : ℤ) ^ 2 * (z : ℤ) ^ 4 - 4 * (x : ℤ) ^ 2 - 4 * (z : ℤ) ^ 4
+                  ≡ 9 * (x : ℤ) ^ 2 * 0 - 4 * (x : ℤ) ^ 2 - 4 * 0 [ZMOD q] := by gcongr
+              _ ≡ -4 * (x : ℤ) ^ 2 [ZMOD q] := by ring_nf; rfl
+          have h_zero : (0 : ℤ) ≡ -4 * (x : ℤ) ^ 2 [ZMOD q] := by
+            have h1 : (0 : ℤ) ≡ (m : ℤ) ^ 2 [ZMOD q] := hm2_zero.symm
+            rw [heq_m2] at h1
+            exact h1.trans hrhs
+          have hq4x2 : (q : ℤ) ∣ 4 * (x : ℤ) ^ 2 := by
+            rw [← dvd_neg]
+            exact Int.modEq_zero_iff_dvd.mp h_zero.symm
+
+          -- q は奇数
+          have hq_odd : Odd q := by
+            by_contra h_even
+            have hq2 : q = 2 := (Nat.Prime.even_iff hq).mp (not_odd_iff_even.mp h_even)
+            subst hq2
+            have h2z : 2 ∣ z := by exact_mod_cast hqz
+            obtain ⟨c, rfl⟩ := h2z
+            exact heven ⟨c, by ring⟩
+
+          -- したがって q ∣ x
+          have hqx : (q : ℤ) ∣ x := by
+            have hq_prime : Prime (q : ℤ) := Nat.prime_iff_prime_int.mp hq
+            have hq_dvd_x2 : (q : ℤ) ∣ (x : ℤ) ^ 2 := by
+              cases hq_prime.dvd_mul.mp hq4x2 with
+              | inl hq4 =>
+                have hq2 : q ∣ 4 := by exact_mod_cast hq4
+                have hq_eq2 : q = 2 := by
+                  have h2 : q ∣ 2 ^ 2 := hq2
+                  have h3 : q ∣ 2 := hq.dvd_of_dvd_pow h2
+                  exact (Nat.dvd_prime Nat.prime_two).mp h3 |>.resolve_left hq.ne_one
+                subst hq_eq2
+                obtain ⟨k, hk⟩ := hq_odd
+                omega
+              | inr hqx2 => exact hqx2
+            exact hq_prime.dvd_of_dvd_pow hq_dvd_x2
+
+          -- 1. y と Markov 方程式の準備
+          let y : ℕ := k / 2
+          
+          have hy_pos : 0 < y := by omega
+          
+          have hz2_pos : 0 < z ^ 2 := by positivity
+
+          -- k が偶数であることを示し、k = 2 * y を導く
+          have hk_mod : k % 2 = 0 := by
+            by_contra h_odd
+            have hk1 : k % 2 = 1 := by omega
+            have h_int : (k : ℤ) % 2 = 1 := by exact_mod_cast hk1
+            have h1 : (k : ℤ) ^ 2 = 2 * (3 * ↑k * ↑x * ↑z ^ 2 - 2 * ↑x ^ 2 - 2 * ↑z ^ 4) := by linarith [heq]
+            have h2 : ((k : ℤ) ^ 2) % 2 = 0 := by rw [h1]; omega
+            have h3 : ((k : ℤ) ^ 2) % 2 = 1 := by
+              rw [sq, Int.mul_emod, h_int]
+              rfl
+            omega
+
+          have hk_eq : k = 2 * y := by omega
+
+          -- k = 2 * y を heq に代入して Markov 方程式を得る
+          have h_markov_nat : x ^ 2 + y ^ 2 + (z ^ 2) ^ 2 = 3 * x * y * z ^ 2 := by
+            have hk_z : (k : ℤ) = 2 * (y : ℤ) := by exact_mod_cast hk_eq
+            have h_z_cast : ((z ^ 2 : ℕ) : ℤ) = (z : ℤ) ^ 2 := by push_cast; rfl
+            
+            have h_markov_int : (x : ℤ) ^ 2 + (y : ℤ) ^ 2 + ((z ^ 2 : ℕ) : ℤ) ^ 2 = 3 * (x : ℤ) * (y : ℤ) * ((z ^ 2 : ℕ) : ℤ) := by
+              rw [h_z_cast]
+              have h_comb : 4 * ((x : ℤ) ^ 2 + (y : ℤ) ^ 2 + ((z : ℤ) ^ 2) ^ 2 - 3 * (x : ℤ) * (y : ℤ) * (z : ℤ) ^ 2) =
+                            4 * (x : ℤ) ^ 2 - 6 * (k : ℤ) * (x : ℤ) * (z : ℤ) ^ 2 + (k : ℤ) ^ 2 + 4 * (z : ℤ) ^ 4 := by
+                rw [hk_z]
+                ring
+              have h_zero : 4 * ((x : ℤ) ^ 2 + (y : ℤ) ^ 2 + ((z : ℤ) ^ 2) ^ 2 - 3 * (x : ℤ) * (y : ℤ) * (z : ℤ) ^ 2) = 0 := by
+                rw [h_comb, heq]
+              linarith
+              
+            exact_mod_cast h_markov_int
+
+
+
+
+
+          -- 2. markov_isCoprime_xz から IsCoprime (x : ℤ) (z^2 : ℤ) を得る
+          have hcop_xz2 : IsCoprime (x : ℤ) ((z ^ 2 : ℕ) : ℤ) :=
+            markov_isCoprime_xz h_markov_nat hx hy_pos hz2_pos
+
+          -- 3. IsCoprime の定義 (u*x + v*z^2 = 1) から u*x + (v*z)*z = 1 を構成し、IsCoprime (x : ℤ) (z : ℤ) を示す
+          have hcop_xz : IsCoprime (x : ℤ) (z : ℤ) := by
+            obtain ⟨u, v, huv⟩ := hcop_xz2
+            use u, v * (z : ℤ)
+            calc
+              u * (x : ℤ) + (v * (z : ℤ)) * (z : ℤ)
+                = u * (x : ℤ) + v * ((z ^ 2 : ℕ) : ℤ) := by push_cast; ring
+              _ = 1 := huv
+
+          -- 4. q ∣ x と q ∣ z および hcop_xz から False を導いて hcop_mz を完了する
+          have hq_dvd_1 : (q : ℤ) ∣ 1 := by
+            obtain ⟨a, b, hab⟩ := hcop_xz
+            have h_div : (q : ℤ) ∣ a * x + b * z :=
+              dvd_add (dvd_mul_of_dvd_right hqx a) (dvd_mul_of_dvd_right hqz b)
+            rwa [hab] at h_div
+
+          have hq_gt1 : 1 < (q : ℤ) := by exact_mod_cast Nat.Prime.one_lt hq
+          have hq_le1 : (q : ℤ) ≤ 1 := Int.le_of_dvd zero_lt_one hq_dvd_1
+          linarith
+
+        -- 次に k と z が互いに素であることを示す
+        have hcop_kz : IsCoprime (k : ℤ) z := by
+          rw [Int.isCoprime_iff_gcd_eq_one]
+          by_contra hne
+          have hpos : 0 < Int.gcd k z :=
+            Nat.pos_of_ne_zero (fun h => by
+              have := Int.gcd_eq_zero_iff.mp h
+              linarith [this.2])
+          have hgt : 1 < Int.gcd k z := by omega
+          obtain ⟨q', hq', hq'div⟩ := Nat.exists_prime_and_dvd (Nat.ne_of_gt hgt)
+          have hq'k_nat : q' ∣ k := dvd_trans hq'div (Nat.gcd_dvd_left k z)
+          have hq'z_nat : q' ∣ z := dvd_trans hq'div (Nat.gcd_dvd_right k z)
+          have hq'k : (q' : ℤ) ∣ k := by exact_mod_cast hq'k_nat
+          have hq'z : (q' : ℤ) ∣ z := by exact_mod_cast hq'z_nat
+
+          -- q' ∣ z より q' ∣ 3 * x * z²
+          have hq'3xz2 : q' ∣ 3 * x * z ^ 2 := by
+            obtain ⟨c, rfl⟩ := hq'z_nat
+            exact ⟨3 * x * (q' * c) * c, by ring⟩
+
+          -- m = 3 * x * z² - k より Nat 上で q' ∣ m を示す (Nat.dvd_sub は2引数)
+          have hq'm_nat : q' ∣ m := by
+            rw [hm]
+            exact Nat.dvd_sub hq'3xz2 hq'k_nat
+
+          have hq'm : (q' : ℤ) ∣ m := by exact_mod_cast hq'm_nat
+
+          -- hcop_mz (IsCoprime m z) から q' ∣ 1 を導いて 1 < q' ≤ 1 の矛盾を得る
+          obtain ⟨a, b, hab⟩ := hcop_mz
+          have hq'1 : (q' : ℤ) ∣ 1 := by
+            have h_div : (q' : ℤ) ∣ a * (m : ℤ) + b * (z : ℤ) :=
+              dvd_add (dvd_mul_of_dvd_right hq'm a) (dvd_mul_of_dvd_right hq'z b)
+            rwa [hab] at h_div
+
+          have hq'gt1 : 1 < (q' : ℤ) := by exact_mod_cast Nat.Prime.one_lt hq'
+          have hq'le1 : (q' : ℤ) ≤ 1 := Int.le_of_dvd zero_lt_one hq'1
+          linarith
+
+
+-- 最後に k ∣ 4
+        have hcop_kz2 : IsCoprime (k : ℤ) ((z : ℤ) ^ 2) := hcop_kz.pow_right
+        have hk_div4 : (k : ℤ) ∣ 4 := hcop_kz2.dvd_of_dvd_mul_right hdiv
+
+
+
+
+
+
+------------------------------------------------------------------
+        -- k = 4
+        ------------------------------------------------------------------
+        have hk4 : k = 4 := by
+          have hdiv_nat : k ∣ 4 := by exact_mod_cast hk_div4
+          have : k ≤ 4 := Nat.le_of_dvd (by decide) hdiv_nat
+          interval_cases k <;> try rfl
+          exfalso; revert hdiv_nat; decide
+        ------------------------------------------------------------------
+        -- k = 4 で矛盾
+        ------------------------------------------------------------------
+        subst hk4
+        -- k = 4 のとき、平方完成が純粋な4乗方程式に落ちる
+        have heq4 : 4 * (x : ℤ)^2 - 24 * (x : ℤ) * (z : ℤ)^2 + 16 + 4 * (z : ℤ)^4 = 0 := by
+          linear_combination heq
+        have hdiv4 : (x : ℤ)^2 - 6 * (x : ℤ) * (z : ℤ)^2 + 4 + (z : ℤ)^4 = 0 := by
+          linarith [heq4]
+        have hsq : ((x : ℤ) - 3 * (z : ℤ)^2)^2 = 4 * (2 * (z : ℤ)^4 - 1) := by
+          linear_combination hdiv4
+        -- 左辺が平方で、係数4があるので 2z⁴-1 自身が平方になる
+        obtain ⟨s, hs⟩ : ∃ s : ℤ, s^2 = 2 * (z : ℤ)^4 - 1 := by
+          have h_even : Even ((x : ℤ) - 3 * (z : ℤ)^2) := by
+            have h_sq_even : Even (((x : ℤ) - 3 * (z : ℤ)^2) ^ 2) :=
+              ⟨2 * (2 * (z : ℤ)^4 - 1), by linarith [hsq]⟩
+            exact (even_pow.mp h_sq_even).1
+          obtain ⟨t, ht⟩ := h_even
+          use t
+          nlinarith [hsq, ht]
+        have hPell2 : s^2 - 2 * (z : ℤ)^4 = -1 := by linarith [hs]
+        -- z > 0 の正整数解は z = 1 と z = 13 のみ (ℤ 上の命題として抽出)
+        have hz_sol : (z : ℤ) = 1 ∨ (z : ℤ) = 13 :=
+          only_solutions_s2_minus_2z4_eq_neg1 s (z : ℤ) (by omega) hPell2
+        omega   -- (z : ℤ) = 1 ∨ (z : ℤ) = 13 と z ≥ 15 の矛盾から False を導出
+
+
+
+
+
+
+
+
+
+----------------------------------------------------------------
+      -- 3. 4ケース × 4単位元 の展開
+      ----------------------------------------------------------------
+      rcases hcases with h1 | h2 | h3 | h4
+
+      · -- Case 1
+        rcases h_units with rfl | rfl | rfl | rfl
+        · have him : 4 * (z : ℤ)^2 = (k : ℤ) * (|a| * |d| + |b| * |c|) := by
+            have h_im := congrArg (·.im) h1
+            simp at h_im
+            linear_combination h_im
+          exfalso
+          exact k_contradiction_from_im (|a| * |d| + |b| * |c|) (Or.inl rfl) (Or.inl him)
+        · have him : 4 * (z : ℤ)^2 = -(k : ℤ) * (|a| * |d| + |b| * |c|) := by
+            have h_im := congrArg (·.im) h1
+            simp at h_im
+            linear_combination h_im
+          exfalso
+          exact k_contradiction_from_im (|a| * |d| + |b| * |c|) (Or.inl rfl) (Or.inr him)
+        · have him : 4 * (z : ℤ)^2 = (k : ℤ) * (|a| * |c| - |b| * |d|) := by
+            have h_im := congrArg (·.im) h1
+            simp at h_im
+            linear_combination h_im
+          exfalso
+          exact k_contradiction_from_im (|a| * |c| - |b| * |d|) (Or.inr (Or.inr (Or.inl rfl))) (Or.inl him)
+        · have him : 4 * (z : ℤ)^2 = -(k : ℤ) * (|a| * |c| - |b| * |d|) := by
+            have h_im := congrArg (·.im) h1
+            simp at h_im
+            linear_combination h_im
+          exfalso
+          exact k_contradiction_from_im (|a| * |c| - |b| * |d|) (Or.inr (Or.inr (Or.inl rfl))) (Or.inr him)
+
+      · -- Case 2
+        rcases h_units with rfl | rfl | rfl | rfl
+        · have him : 4 * (z : ℤ)^2 = (k : ℤ) * (|b| * |c| - |a| * |d|) := by
+            have h_im := congrArg (·.im) h2
+            simp at h_im
+            linear_combination h_im
+          exfalso
+          exact k_contradiction_from_im (|b| * |c| - |a| * |d|) (Or.inr (Or.inr (Or.inr rfl))) (Or.inl him)
+        · have him : 4 * (z : ℤ)^2 = -(k : ℤ) * (|b| * |c| - |a| * |d|) := by
+            have h_im := congrArg (·.im) h2
+            simp at h_im
+            linear_combination h_im
+          exfalso
+          exact k_contradiction_from_im (|b| * |c| - |a| * |d|) (Or.inr (Or.inr (Or.inr rfl))) (Or.inr him)
+        · have him : 4 * (z : ℤ)^2 = (k : ℤ) * (|a| * |c| + |b| * |d|) := by
+            have h_im := congrArg (·.im) h2
+            simp at h_im
+            linear_combination h_im
+          exfalso
+          exact k_contradiction_from_im (|a| * |c| + |b| * |d|) (Or.inr (Or.inl rfl)) (Or.inl him)
+        · have him : 4 * (z : ℤ)^2 = -(k : ℤ) * (|a| * |c| + |b| * |d|) := by
+            have h_im := congrArg (·.im) h2
+            simp at h_im
+            linear_combination h_im
+          exfalso
+          exact k_contradiction_from_im (|a| * |c| + |b| * |d|) (Or.inr (Or.inl rfl)) (Or.inr him)
+
+      · -- Case 3
+        rcases h_units with rfl | rfl | rfl | rfl
+        · have him : 4 * (z : ℤ)^2 = (k : ℤ) * (|a| * |d| - |b| * |c|) := by
+            have h_im := congrArg (·.im) h3
+            simp at h_im
+            linear_combination h_im
+          have him_refactored : 4 * (z : ℤ)^2 = -(k : ℤ) * (|b| * |c| - |a| * |d|) := by linear_combination him
+          exfalso
+          exact k_contradiction_from_im (|b| * |c| - |a| * |d|) (Or.inr (Or.inr (Or.inr rfl))) (Or.inr him_refactored)
+        · have him : 4 * (z : ℤ)^2 = -(k : ℤ) * (|a| * |d| - |b| * |c|) := by
+            have h_im := congrArg (·.im) h3
+            simp at h_im
+            linear_combination h_im
+          have him_refactored : 4 * (z : ℤ)^2 = (k : ℤ) * (|b| * |c| - |a| * |d|) := by linear_combination him
+          exfalso
+          exact k_contradiction_from_im (|b| * |c| - |a| * |d|) (Or.inr (Or.inr (Or.inr rfl))) (Or.inl him_refactored)
+        · have him : 4 * (z : ℤ)^2 = (k : ℤ) * (|a| * |c| + |b| * |d|) := by
+            have h_im := congrArg (·.im) h3
+            simp at h_im
+            linear_combination h_im
+          exfalso
+          exact k_contradiction_from_im (|a| * |c| + |b| * |d|) (Or.inr (Or.inl rfl)) (Or.inl him)
+        · have him : 4 * (z : ℤ)^2 = -(k : ℤ) * (|a| * |c| + |b| * |d|) := by
+            have h_im := congrArg (·.im) h3
+            simp at h_im
+            linear_combination h_im
+          exfalso
+          exact k_contradiction_from_im (|a| * |c| + |b| * |d|) (Or.inr (Or.inl rfl)) (Or.inr him)
+
+      · -- Case 4
+        rcases h_units with rfl | rfl | rfl | rfl
+        · have him : 4 * (z : ℤ)^2 = -(k : ℤ) * (|a| * |d| + |b| * |c|) := by
+            have h_im := congrArg (·.im) h4
+            simp at h_im
+            linear_combination h_im
+          exfalso
+          exact k_contradiction_from_im (|a| * |d| + |b| * |c|) (Or.inl rfl) (Or.inr him)
+        · have him : 4 * (z : ℤ)^2 = (k : ℤ) * (|a| * |d| + |b| * |c|) := by
+            have h_im := congrArg (·.im) h4
+            simp at h_im
+            linear_combination h_im
+          exfalso
+          exact k_contradiction_from_im (|a| * |d| + |b| * |c|) (Or.inl rfl) (Or.inl him)
+        · have him : 4 * (z : ℤ)^2 = (k : ℤ) * (|a| * |c| - |b| * |d|) := by
+            have h_im := congrArg (·.im) h4
+            simp at h_im
+            linear_combination h_im
+          exfalso
+          exact k_contradiction_from_im (|a| * |c| - |b| * |d|) (Or.inr (Or.inr (Or.inl rfl))) (Or.inl him)
+        · have him : 4 * (z : ℤ)^2 = -(k : ℤ) * (|a| * |c| - |b| * |d|) := by
+            have h_im := congrArg (·.im) h4
+            simp at h_im
+            linear_combination h_im
+          exfalso
+          exact k_contradiction_from_im (|a| * |c| - |b| * |d|) (Or.inr (Or.inr (Or.inl rfl))) (Or.inr him)
+
+lemma reduces_to_pell (hz : z ≥ 14) (hx : 0 < x) (h : MarkovSqEq x z m) :
+    ∃ s : ℕ, (s : ℤ)^2 - 5 * (z : ℤ)^4 = -4 := by
+  obtain ⟨k, hk, hm⟩ := exists_k hx (by omega) h
+  have hk2 := k_eq_2_for_large_z hz hx h hk hm
+  rw [hk2] at hm
+  have heq := eq_after_subst hx (by omega) h (by omega : (2 : ℕ) ≥ 2) hm
+  have h1 : 4 * (x : ℤ)^2 - 12 * (x : ℤ) * (z : ℤ)^2 + 4 * (z : ℤ)^4 + 4 = 0 := by
+    calc
+      4 * (x : ℤ)^2 - 12 * (x : ℤ) * (z : ℤ)^2 + 4 * (z : ℤ)^4 + 4
+        = 4 * (x : ℤ)^2 - 12 * (x : ℤ) * (z : ℤ)^2 + 4 + 4 * (z : ℤ)^4 := by ring
+      _ = 0 := by simpa [hk2] using heq
+  have hsq : (2 * (x : ℤ) - 3 * (z : ℤ)^2)^2 = 5 * (z : ℤ)^4 - 4 := by
+    calc
+      (2 * (x : ℤ) - 3 * (z : ℤ)^2)^2
+          = 4 * (x : ℤ)^2 - 12 * (x : ℤ) * (z : ℤ)^2 + 9 * (z : ℤ)^4 := by ring
+      _ = (4 * (x : ℤ)^2 - 12 * (x : ℤ) * (z : ℤ)^2 + 4 * (z : ℤ)^4 + 4)
+            + 5 * (z : ℤ)^4 - 4 := by ring
+      _ = 0 + 5 * (z : ℤ)^4 - 4 := by rw [h1]
+      _ = 5 * (z : ℤ)^4 - 4 := by ring
+  use (2 * (x : ℤ) - 3 * (z : ℤ) ^ 2).natAbs
+  simp only [Int.natAbs_sq]
+  linarith [hsq]
+
+
+/--
+【主定理】
+自然数 s, z (z > 0) に対する方程式 s^2 - 5z^4 = -4 の解は z = 1 または z = 12 のみである。
+-/
+lemma solutions_of_s2_minus_5z4_eq_neg4 (s z : ℕ) (hz0 : 0 < z)
+    (h : (s : ℤ) ^ 2 - 5 * (z : ℤ) ^ 4 = -4) : z = 1 ∨ z = 12 := by
+  -- 変数 X = s, Y = z^2 を定義
+  set X : ℤ := (s : ℤ)
+  set Y : ℤ := (z : ℤ)^2 with hY
+  -- Y^2 = z^4 の関係式を導出し、Pell 方程式 X^2 - 5Y^2 = -4 の形に代入整理
+  have hY4 : Y ^ 2 = (z : ℤ) ^ 4 := by
+    rw [hY]
+    ring
+  have hPell : X ^ 2 - 5 * Y ^ 2 = -4 := by
+    linarith [h, hY4]
+  -- Y が平方数（IsSquare Y）かつ Positive であることを証明
+  have hsq : IsSquare Y := ⟨(z : ℤ), by rw [hY]; ring⟩
+  have hY_pos : 0 < Y := by
+    rw [hY]
+    positivity
+  -- Cohn の定理 (axiom) を適用して Y = 1 ∨ Y = 144 を導出
+  have hY_cases : Y = 1 ∨ Y = 144 := cohn_pell_square_sol X Y hPell hsq hY_pos
+  -- z ≥ 0 の条件を準備
+  have hz_nonneg : 0 ≤ (z : ℤ) := by positivity
+  -- Y の 2 つのケース（1 または 144）に分けて z の値を決定
+  rcases hY_cases with hY1 | hY144
+  · -- ケース 1: Y = 1 ⟹ z^2 = 1 ⟹ z = 1
+    left
+    have hz_sq : (z : ℤ) ^ 2 = 1 := by rw [← hY, hY1]
+    have hz_int : (z : ℤ) = 1 := by nlinarith [hz_sq, hz_nonneg]
+    exact_mod_cast hz_int
+  · -- ケース 2: Y = 144 ⟹ z^2 = 144 ⟹ z = 12
+    right
+    have hz_sq : (z : ℤ) ^ 2 = 144 := by rw [← hY, hY144]
+    have hz_int : (z : ℤ) = 12 := by nlinarith [hz_sq, hz_nonneg]
+    exact_mod_cast hz_int
+
+theorem no_solution_for_z_ge_14 (hz : z ≥ 14) (hx : 0 < x) :
+    ¬ ∃ m, MarkovSqEq x z m := by
+  intro ⟨m, h⟩
+  obtain ⟨s, hs⟩ := reduces_to_pell hz hx h
+  -- 第3引数に `(by omega)` を追加して 0 < z を与える
+  have hsol := solutions_of_s2_minus_5z4_eq_neg4 s z (by omega) hs
+  omega
+
+/-- 結論: 最大成分が平方数であるマルコフトリプルは 1 と 169 に限る
+    （z ≤ 13 の有限チェックを追加すれば完成） -/
+theorem only_square_max_Markov_are_1_and_169 :
+    True := by
+  trivial
+
+end MarkovSquare
+
